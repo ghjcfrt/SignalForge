@@ -1,0 +1,11 @@
+{
+  "owner": "ttoooong",
+  "slug": "mental-health-assistant",
+  "displayName": "Mental Health Assistant",
+  "latest": {
+    "version": "2.1.0",
+    "publishedAt": 1774237629068,
+    "commit": "https://github.com/openclaw/skills/commit/d40e9d6dc3fe589357e6281b18452611ebad9637"
+  },
+  "history": []
+}

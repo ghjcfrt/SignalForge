@@ -1,0 +1,22 @@
+[project]
+name = "rexun-workshop"
+version = "0.1.0"
+description = "热讯工坊：从 0 搭建的一人公司 AI Agent 调度台"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.116.0",
+    "uvicorn[standard]>=0.35.0",
+    "openai>=1.99.0",
+    "python-dotenv>=1.1.0",
+    "httpx>=0.28.0",
+    "pydantic>=2.11.0",
+    "pydantic-settings>=2.10.0",
+    "uv>=0.11.0",
+    "bilibili-api-python>=17.4.2",
+    "curl-cffi>=0.15.0",
+    "protobuf>=7.35.1",
+]
+
+[tool.uv]
+package = false
