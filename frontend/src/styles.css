@@ -154,6 +154,36 @@ button {
   line-height: 1.55;
 }
 
+.shutdown-button {
+  min-height: 42px;
+  margin-top: -8px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(233, 76, 61, 0.24);
+  border-radius: 8px;
+  color: #9c3d31;
+  background: #fff1ee;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 760;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    opacity 160ms ease;
+}
+
+.shutdown-button:hover {
+  transform: translateY(-1px);
+}
+
+.shutdown-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 .main {
   min-width: 0;
   padding: 24px;

@@ -84,3 +84,7 @@ export function restartBackend() {
 export function stopFrontend() {
   return request<ControlResult>("/local-control/frontend/stop", { method: "POST" });
 }
+
+export function shutdownAll() {
+  return request<ControlResult>("/local-control/shutdown", { method: "POST" });
+}

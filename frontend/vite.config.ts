@@ -295,6 +295,20 @@ function localControlPlugin() {
             return;
           }
 
+          if (req.method === "POST" && url.pathname === "/local-control/shutdown") {
+            writeJson(res, {
+              ok: true,
+              message: "Shutdown requested. Backend and frontend are shutting down."
+            });
+            // Respond first so the browser can leave the loading state. The
+            // current page remains visible after Vite exits, so this ordering
+            // also lets the UI show a meaningful completed state.
+            setTimeout(() => {
+              void stopBackend().finally(() => process.exit(0));
+            }, 100);
+            return;
+          }
+
           writeJson(res, { ok: false, message: "Unknown local control route." }, 404);
         } catch (error) {
           writeJson(

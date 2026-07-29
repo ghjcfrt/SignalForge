@@ -31,6 +31,7 @@ import {
   restartBackend,
   runHotVideoWorkflow,
   runMoneyPrinterTurbo,
+  shutdownAll,
   startBackend,
   stopBackend,
   stopFrontend
@@ -93,7 +94,19 @@ const viewMeta: Record<ViewId, { title: string; subtitle: string }> = {
   }
 };
 
-function ShellNav({ activeView, onViewChange }: { activeView: ViewId; onViewChange: (view: ViewId) => void }) {
+function ShellNav({
+  activeView,
+  onViewChange,
+  closing,
+  shutdownComplete,
+  onShutdown
+}: {
+  activeView: ViewId;
+  onViewChange: (view: ViewId) => void;
+  closing: boolean;
+  shutdownComplete: boolean;
+  onShutdown: () => void;
+}) {
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -127,6 +140,11 @@ function ShellNav({ activeView, onViewChange }: { activeView: ViewId; onViewChan
         <strong>你负责决策</strong>
         <p>AI 员工负责收集、分析、撰写、剪辑和运营产物。</p>
       </div>
+
+      <button className="shutdown-button" onClick={onShutdown} disabled={closing || shutdownComplete} type="button">
+        {closing ? <Loader2 className="spin" size={17} /> : <Power size={17} />}
+        <span>{closing ? "正在关闭" : shutdownComplete ? "服务已关闭" : "退出并关闭服务"}</span>
+      </button>
     </aside>
   );
 }
@@ -846,6 +864,8 @@ export default function App() {
   const [extraOutputs, setExtraOutputs] = useState<AgentOutput[]>([]);
   const [running, setRunning] = useState(false);
   const [scriptBusy, setScriptBusy] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [shutdownComplete, setShutdownComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const outputs = useMemo(() => {
@@ -902,9 +922,32 @@ export default function App() {
     }
   }
 
+  async function handleShutdown() {
+    if (!window.confirm("将同时关闭前端和后端服务，当前页面也会随之关闭。确定继续吗？")) {
+      return;
+    }
+
+    setClosing(true);
+    try {
+      await shutdownAll();
+    } catch {
+      // The frontend exits shortly after the shutdown command, so a dropped
+      // connection is expected and should not prevent the local processes from stopping.
+    } finally {
+      setClosing(false);
+      setShutdownComplete(true);
+    }
+  }
+
   return (
     <div className="app-shell">
-      <ShellNav activeView={activeView} onViewChange={setActiveView} />
+      <ShellNav
+        activeView={activeView}
+        onViewChange={setActiveView}
+        closing={closing}
+        shutdownComplete={shutdownComplete}
+        onShutdown={handleShutdown}
+      />
       <main className="main">
         <TopBar activeView={activeView} status={status} running={running} onRun={handleRun} />
         {error && (
