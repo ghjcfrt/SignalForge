@@ -13,6 +13,8 @@ frontend/*.tsbuildinfo
 frontend/vite.config.js
 frontend/vite.config.d.ts
 
+.pnpm-store/
+
 workspaces/runs/
 workspaces/*.png
 *.log

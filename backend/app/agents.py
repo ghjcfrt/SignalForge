@@ -33,6 +33,13 @@ AGENTS: list[Agent] = [
         role="分析爆款内容规律，拆解传播钩子、情绪冲突和受众动机。",
         focus="爆款结构、封面标题、传播因子",
         workspace=_workspace("viral_analyst"),
+        skills=[
+            Skill(
+                name="space-xhs-hotspot",
+                source="https://github.com/SpaceZephyr/creator-buddy/tree/main/xhs-Skills/space-xhs-hotspot (MIT)",
+                description="搜集小红书公开热点，按数据源、时间窗和样本量分析热点结构；无可核验数据时明确降级，不编造互动数据。",
+            )
+        ],
     ),
     Agent(
         id="copywriter",
@@ -82,7 +89,7 @@ AGENTS: list[Agent] = [
         skills=[
             Skill(
                 name="Product-Manager-Skills",
-                source="https://github.com/deanpeters/Product-Manager-Skills @ 9971018 (CC BY-NC-SA 4.0)",
+                source="https://github.com/deanpeters/Product-Manager-Skills (CC BY-NC-SA 4.0)",
                 description="产品发现、需求澄清、路线图、竞品分析和 PM 文档方法库。",
             )
         ],
@@ -102,6 +109,13 @@ AGENTS: list[Agent] = [
         role="查看股票相关信息，辅助财经选题。",
         focus="行情摘要、财报线索、风险提示",
         workspace=_workspace("stock_assistant"),
+        skills=[
+            Skill(
+                name="stock-analysis",
+                source="https://github.com/liusai0820/Stock-Analysis-Skill",
+                description="获取 A 股、港股、美股行情和历史数据，计算技术指标，并结合最新新闻输出中文决策看板；输出区分数据、推断和风险提示。",
+            )
+        ],
     ),
     Agent(
         id="healer",

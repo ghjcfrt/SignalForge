@@ -77,9 +77,9 @@
 - 运行接口：`POST /api/video/moneyprinterturbo/run`。
 - 环境依赖检查：
   - `MPT_LLM_PROVIDER`
-  - `MPT_LLM_API_KEY`（或复用 `OPENAI_API_KEY_YW_SF`）
-  - `MPT_LLM_BASE_URL`
-  - `MPT_LLM_MODEL_NAME`
+  - `AI_API_KEY`
+  - `AI_BASE_URL`
+  - `AI_MODEL`
   - `MPT_PEXELS_API_KEY`
 
 ---
@@ -183,7 +183,7 @@
 - 前端默认：`http://127.0.0.1:5173`
 - 后端默认：`http://127.0.0.1:8017`
 - API 文档：`http://127.0.0.1:8017/docs`
-- 依赖密钥：`OPENAI_API_KEY_YW_SF`（可选但影响实时能力）
+- 依赖密钥：`AI_API_KEY`（可选但影响实时能力）
 
 ---
 

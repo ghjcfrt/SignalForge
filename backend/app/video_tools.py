@@ -46,19 +46,14 @@ class MoneyPrinterTurboRunResult(BaseModel):
 
 def mpt_status(settings: Settings) -> MoneyPrinterTurboStatus:
     missing_env: list[str] = []
-    provider = settings.mpt_llm_provider or "oneapi"
-    llm_key = settings.mpt_llm_api_key or settings.openai_api_key_yw_sf
-    base_url = settings.mpt_llm_base_url or settings.openai_base_url_yw_sf
-    model = settings.mpt_llm_model_name or settings.openai_model_yw_sf
+    provider = "oneapi"
+    llm_key = settings.ai_api_key
+    base_url = settings.ai_base_url
 
-    if not provider:
-        missing_env.append("MPT_LLM_PROVIDER")
     if not llm_key:
-        missing_env.append("MPT_LLM_API_KEY 或 OPENAI_API_KEY_YW_SF")
+        missing_env.append("AI_API_KEY")
     if provider in {"oneapi", "openai_compatible"} and not base_url:
-        missing_env.append("MPT_LLM_BASE_URL")
-    if provider in {"oneapi", "openai_compatible"} and not model:
-        missing_env.append("MPT_LLM_MODEL_NAME")
+        missing_env.append("AI_BASE_URL")
     if not settings.mpt_pexels_api_key:
         missing_env.append("MPT_PEXELS_API_KEY")
 
@@ -77,11 +72,12 @@ def mpt_status(settings: Settings) -> MoneyPrinterTurboStatus:
 
 def _mpt_env(settings: Settings) -> dict[str, str]:
     env = os.environ.copy()
-    env["MPT_LLM_PROVIDER"] = settings.mpt_llm_provider or "oneapi"
-    env["MPT_LLM_BASE_URL"] = settings.mpt_llm_base_url or settings.openai_base_url_yw_sf
-    env["MPT_LLM_MODEL_NAME"] = settings.mpt_llm_model_name or settings.openai_model_yw_sf
-    if settings.mpt_llm_api_key or settings.openai_api_key_yw_sf:
-        env["MPT_LLM_API_KEY"] = settings.mpt_llm_api_key or settings.openai_api_key_yw_sf or ""
+    env["MPT_LLM_PROVIDER"] = "oneapi"
+    env["MPT_LLM_BASE_URL"] = settings.ai_base_url
+    if settings.ai_model and settings.ai_model.strip():
+        env["MPT_LLM_MODEL_NAME"] = settings.ai_model.strip()
+    if settings.ai_api_key:
+        env["MPT_LLM_API_KEY"] = settings.ai_api_key
     if settings.mpt_pexels_api_key:
         env["MPT_PEXELS_API_KEY"] = settings.mpt_pexels_api_key
     return env

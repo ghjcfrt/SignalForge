@@ -16,6 +16,9 @@ dependencies = [
     "bilibili-api-python>=17.4.2",
     "curl-cffi>=0.15.0",
     "protobuf>=7.35.1",
+    "akshare>=1.17.50",
+    "yfinance>=0.2.54",
+    "efinance>=0.5.5",
 ]
 
 [tool.uv]

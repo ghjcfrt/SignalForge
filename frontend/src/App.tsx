@@ -9,8 +9,10 @@ import {
   Cpu,
   ExternalLink,
   FileText,
+  HeartHandshake,
   KeyRound,
   Loader2,
+  MessageCircle,
   Power,
   Play,
   RefreshCcw,
@@ -19,11 +21,13 @@ import {
   Server,
   Sparkles,
   Square,
+  TrendingUp,
   Video,
   Wand2
 } from "lucide-react";
 import {
   fetchAgents,
+  analyzeStocks,
   fetchMoneyPrinterTurboStatus,
   fetchStatus,
   fetchSystemStatus,
@@ -47,6 +51,8 @@ import type {
   SystemStatus,
   TopicSeed,
   WorkflowRun
+  ,StockAnalysisResult
+  ,EngagementComment
 } from "./types";
 
 type ViewId = (typeof navItems)[number]["id"];
@@ -76,6 +82,10 @@ const viewMeta: Record<ViewId, { title: string; subtitle: string }> = {
     title: "热点雷达",
     subtitle: "给赵爽一个方向，快速形成可选题池。"
   },
+  stocks: {
+    title: "股票分析",
+    subtitle: "财经、股票和股票新闻统一走 Stock Analysis Skill。"
+  },
   scripts: {
     title: "脚本工坊",
     subtitle: "把热点角度变成 90-120 秒短视频口播脚本。"
@@ -83,6 +93,10 @@ const viewMeta: Record<ViewId, { title: string; subtitle: string }> = {
   editing: {
     title: "剪辑队列",
     subtitle: "查看小李生成的画幅、配音、字幕、素材和导出方案。"
+  },
+  engagement: {
+    title: "互动回复",
+    subtitle: "把评论区、私信和内容反馈交给最合适的 AI 员工跟进"
   },
   agents: {
     title: "员工",
@@ -375,7 +389,7 @@ function SettingsStrip({ status }: { status: ApiStatus | null }) {
     <section className="settings-strip">
       <div>
         <span>Key Path</span>
-        <strong>OPENAI_API_KEY_YW_SF</strong>
+        <strong>AI_API_KEY</strong>
       </div>
       <div>
         <span>Base URL</span>
@@ -383,7 +397,7 @@ function SettingsStrip({ status }: { status: ApiStatus | null }) {
       </div>
       <div>
         <span>Model</span>
-        <strong>{status?.model ?? "gpt-4o-mini"}</strong>
+        <strong>{status?.model ?? "中转站自动选择"}</strong>
       </div>
       <div>
         <span>Workspace</span>
@@ -482,13 +496,17 @@ function EditingQueueView({ outputs, seed }: { outputs: AgentOutput[]; seed: Top
     }
   }
 
+  const missingEnv = mptStatus?.missing_env ?? [];
+  const hasLlmKey = !missingEnv.includes("AI_API_KEY");
+  const hasPexelsKey = !missingEnv.includes("MPT_PEXELS_API_KEY");
+
   return (
     <div className="single-view">
       <section className="panel mpt-panel">
         <div className="panel-heading tight">
           <div>
             <h2>MoneyPrinterTurbo</h2>
-            <p>小李的专属剪辑 Skill，来源于 harry0703/MoneyPrinterTurbo 官方 Agent Skill。</p>
+            <p>小李的专属剪辑能力，基于 MoneyPrinterTurbo。</p>
           </div>
           <span className={cn("run-state", mptStatus?.installed && "done")}>
             {mptStatus?.installed ? "installed" : "checking"}
@@ -496,26 +514,23 @@ function EditingQueueView({ outputs, seed }: { outputs: AgentOutput[]; seed: Top
         </div>
         <div className="mpt-grid">
           <div>
-            <span>上游出处</span>
-            <strong>github.com/harry0703/MoneyPrinterTurbo</strong>
-          </div>
-          <div>
-            <span>许可证</span>
-            <strong>{mptStatus?.license ?? "MIT"}</strong>
-          </div>
-          <div>
-            <span>Skill 路径</span>
-            <strong>{mptStatus?.skill_dir ?? "workspaces/agents/video_editor/skills/moneyprinterturbo-video"}</strong>
-          </div>
-          <div>
-            <span>默认命令</span>
-            <strong>{mptStatus?.default_command ?? 'uv run --no-project --python 3.11 python mpt_agent.py --subject "<视频主题或脚本>"'}</strong>
+            <span>来源</span>
+            <strong>
+              <a href="https://github.com/harry0703/MoneyPrinterTurbo" target="_blank" rel="noreferrer">
+                MoneyPrinterTurbo 官方仓库
+                <ExternalLink size={13} aria-hidden="true" />
+              </a>
+            </strong>
           </div>
         </div>
-        {!!mptStatus?.missing_env.length && (
+        {!!missingEnv.length && (
           <div className="missing-env">
             <AlertCircle size={16} />
-            <span>真实成片还需要：{mptStatus.missing_env.join("、")}</span>
+            <div>
+              <strong>真实成片需要配置以下服务：</strong>
+              <span className={cn(hasLlmKey && "config-ready")}>AI 密钥：{hasLlmKey ? "已配置" : "请配置 AI_API_KEY"}</span>
+              <span className={cn(hasPexelsKey && "config-ready")}>视频素材：{hasPexelsKey ? "已配置" : "请配置 MPT_PEXELS_API_KEY（"}<a href="https://www.pexels.com/api/" target="_blank" rel="noreferrer">前往 Pexels API 获取</a>{!hasPexelsKey && "）"}</span>
+            </div>
           </div>
         )}
         <div className="mpt-actions">
@@ -608,6 +623,116 @@ function AgentsView({ agents }: { agents: Agent[] }) {
         })}
       </div>
     </section>
+  );
+}
+
+const initialComments: EngagementComment[] = [
+  { id: "c-101", author: "小树洞", content: "最近总是很焦虑，明明没有发生什么，却每天都觉得好累。该怎么办？", source: "视频评论区 · 《成年人如何面对焦虑》", time: "刚刚", category: "情绪支持", assignedAgentId: "healer", priority: "高", status: "待回复" },
+  { id: "c-102", author: "Momo", content: "这个工作流可以接入小红书的评论吗？想用在自己的账号上。", source: "视频评论区 · 《AI 员工工作流》", time: "8 分钟前", category: "产品咨询", assignedAgentId: "operator", priority: "普通", status: "待回复" },
+  { id: "c-103", author: "阿远", content: "如果想系统学习这套方法，建议先从哪个岗位开始？", source: "私信", time: "21 分钟前", category: "内容讨论", assignedAgentId: "product_manager", priority: "普通", status: "待回复" },
+  { id: "c-104", author: "晚风", content: "看完视频感觉被理解了，谢谢你们认真做这样的内容。", source: "视频评论区 · 《给低能量的你》", time: "36 分钟前", category: "情绪支持", assignedAgentId: "healer", priority: "普通", status: "待回复" }
+];
+
+function EngagementView({ agents }: { agents: Agent[] }) {
+  const [comments, setComments] = useState(initialComments);
+  const [selectedId, setSelectedId] = useState(initialComments[0].id);
+  const [draft, setDraft] = useState("");
+  const selected = comments.find((comment) => comment.id === selectedId) ?? comments[0];
+  const fallbackNames: Record<string, string> = { healer: "周周", operator: "尤道理", product_manager: "方瓷" };
+  const agentName = (id: string) => agents.find((agent) => agent.id === id)?.name ?? fallbackNames[id] ?? id;
+
+  useEffect(() => {
+    if (!selected) return;
+    setDraft(selected.status === "已回复" ? "已完成回复，可继续编辑" : selected.category === "情绪支持" ? "听起来你最近承受了不少压力，谢谢你愿意把这份感受说出来。可以先从今天最困扰你的一个小片段开始，给自己一点喘息的空间；如果这种疲惫持续影响生活，也建议找专业咨询师聊聊。" : "感谢你的留言，我们会把这个问题记录下来并持续完善。你也可以告诉我们更具体的使用场景。 ");
+  }, [selectedId, selected?.status, selected?.category]);
+
+  function sendReply() {
+    if (!selected || !draft.trim() || selected.status === "已回复") return;
+    setComments((items) => items.map((item) => item.id === selected.id ? { ...item, status: "已回复" } : item));
+  }
+
+  return (
+    <div className="engagement-layout">
+      <section className="panel engagement-queue">
+        <div className="panel-heading tight">
+          <div><h2>待处理互动</h2><p>按主题分派给对应员工，回复前请先确认语气和安全边界。</p></div>
+          <span className="count-badge">{comments.filter((item) => item.status === "待回复").length} 待回复</span>
+        </div>
+        <div className="comment-list">
+          {comments.map((comment) => (
+            <button type="button" key={comment.id} className={cn("comment-row", selectedId === comment.id && "selected")} onClick={() => setSelectedId(comment.id)}>
+              <div className="comment-avatar">{comment.author.slice(0, 1)}</div>
+              <div className="comment-main"><div className="comment-meta"><strong>{comment.author}</strong><span>{comment.time}</span></div><p>{comment.content}</p><div className="comment-tags"><span>{comment.category}</span><span className={comment.priority === "高" ? "priority-high" : ""}>{comment.priority}</span></div></div>
+              <div className={cn("reply-owner", comment.status === "已回复" && "replied")}><HeartHandshake size={14} /><span>{agentName(comment.assignedAgentId)}</span></div>
+            </button>
+          ))}
+        </div>
+      </section>
+      <section className="panel reply-panel">
+        {selected && <>
+          <div className="panel-heading tight"><div><h2>回复工作台</h2><p>{selected.source}</p></div><span className={cn("reply-status", selected.status === "已回复" && "done")}>{selected.status}</span></div>
+          <div className="selected-comment"><strong>{selected.author}</strong><p>{selected.content}</p></div>
+          <label className="reply-label"><span>负责员工</span><select value={selected.assignedAgentId} onChange={(event) => setComments((items) => items.map((item) => item.id === selected.id ? { ...item, assignedAgentId: event.target.value } : item))}>{agents.filter((agent) => ["healer", "operator", "product_manager"].includes(agent.id)).map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.title}</option>)}</select></label>
+          <label className="reply-label"><span>回复内容</span><textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={7} /></label>
+          <div className="reply-footer"><span><MessageCircle size={15} /> 建议由 {agentName(selected.assignedAgentId)} 回复</span><button className="primary-button" type="button" onClick={sendReply} disabled={selected.status === "已回复" || !draft.trim()}>{selected.status === "已回复" ? "已提交" : "提交回复"}</button></div>
+        </>}
+      </section>
+    </div>
+  );
+}
+
+function StockAnalysisView() {
+  const [stocks, setStocks] = useState("600519");
+  const [result, setResult] = useState<StockAnalysisResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function handleAnalyze() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      setResult(await analyzeStocks({ stocks }));
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "股票分析失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="single-view">
+      <section className="panel action-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>林量 · Stock Analysis Skill</h2>
+            <p>财经、股票和股票新闻请求默认调用此 Skill。支持 A 股、港股、美股。</p>
+          </div>
+          <button className="primary-button" onClick={handleAnalyze} disabled={busy || !stocks.trim()} type="button">
+            {busy ? <Loader2 className="spin" size={18} /> : <TrendingUp size={18} />}
+            <span>{busy ? "分析中" : "开始分析"}</span>
+          </button>
+        </div>
+        <div className="form-grid">
+          <label className="wide">
+            <span>股票代码或名称（逗号分隔）</span>
+            <input value={stocks} onChange={(event) => setStocks(event.target.value)} placeholder="600519, TSLA, HK00700" />
+          </label>
+        </div>
+        {message && <div className="control-message"><AlertCircle size={16} /><span>{message}</span></div>}
+      </section>
+      {result && (
+        <section className="panel outputs-panel">
+          <div className="panel-heading tight">
+            <div>
+              <h2>股票决策看板</h2>
+              <p>数据脚本：{result.data_script} · 新闻抓取：{result.news_enabled ? "已启用" : "未启用"}</p>
+            </div>
+          </div>
+          <pre>{result.report}</pre>
+          <p className="risk-note">{result.disclaimer}</p>
+        </section>
+      )}
+    </div>
   );
 }
 
@@ -766,7 +891,7 @@ function SettingsView({ status, onBackendStateChange }: { status: ApiStatus | nu
           <div>
             <KeyRound size={18} />
             <span>Key Path</span>
-            <strong>OPENAI_API_KEY_YW_SF</strong>
+            <strong>AI_API_KEY</strong>
           </div>
           <div>
             <ExternalLink size={18} />
@@ -776,7 +901,7 @@ function SettingsView({ status, onBackendStateChange }: { status: ApiStatus | nu
           <div>
             <Bot size={18} />
             <span>Model</span>
-            <strong>{status?.model ?? "gpt-4o-mini"}</strong>
+            <strong>{status?.model ?? "中转站自动选择"}</strong>
           </div>
           <div>
             <FileText size={18} />
@@ -971,6 +1096,7 @@ export default function App() {
         {activeView === "radar" && (
           <RadarView run={run} seed={seed} onChange={setSeed} onRun={handleRun} running={running} />
         )}
+        {activeView === "stocks" && <StockAnalysisView />}
         {activeView === "scripts" && (
           <ScriptStudioView
             seed={seed}
@@ -981,6 +1107,7 @@ export default function App() {
           />
         )}
         {activeView === "editing" && <EditingQueueView outputs={outputs} seed={seed} />}
+        {activeView === "engagement" && <EngagementView agents={agents} />}
         {activeView === "agents" && <AgentsView agents={agents} />}
         {activeView === "settings" && <SettingsView status={status} onBackendStateChange={() => refreshBackendData()} />}
         {activeView !== "settings" && <SettingsStrip status={status} />}

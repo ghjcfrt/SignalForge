@@ -35,10 +35,17 @@ function Invoke-Uv {
     }
 }
 
+
 Write-Host "==> Sync Python dependencies into uv virtualenv .venv"
 Invoke-Uv sync
 
 Write-Host "==> Install frontend dependencies"
+if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
+    throw "npm not found. Install Node.js and ensure its installation directory is in PATH, then reopen PowerShell."
+}
+if (-not (Get-Command node.exe -ErrorAction SilentlyContinue)) {
+    throw "node not found. Install Node.js and ensure its installation directory is in PATH, then reopen PowerShell."
+}
 Push-Location frontend
 try {
     npm install

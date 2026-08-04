@@ -43,10 +43,24 @@ class TopicSeed(BaseModel):
     duration_seconds: int = Field(default=110, ge=30, le=240)
 
 
+class SourceEvidence(BaseModel):
+    name: str
+    url: str
+    published_at: datetime
+    claim: str
+
+
 class Topic(BaseModel):
     title: str
     heat: int = Field(ge=0, le=100)
     source_hint: str
+    source_url: str | None = None
+    source_published_at: datetime | None = None
+    sources: list[SourceEvidence] = Field(default_factory=list)
+    cross_check_note: str = "未完成多方交叉验证。"
+    checked_at: datetime | None = None
+    verification_status: Literal["verified", "unverified"] = "unverified"
+    verification_note: str = "未完成来源核验，不得作为新闻事实发布。"
     angle: str
     risk: str
 
@@ -82,3 +96,23 @@ class GenerateScriptRequest(BaseModel):
     duration_seconds: int = Field(default=110, ge=30, le=240)
     audience: str = Field(default="关注 AI 工具的一线创作者和创业者")
 
+
+class StockAnalysisRequest(BaseModel):
+    stocks: str = Field(
+        min_length=1,
+        description="股票代码或名称，多个代码用逗号分隔，例如 600519,TSLA,HK00700。",
+    )
+    days: int = Field(default=120, ge=30, le=365)
+    include_news: bool = True
+
+
+class StockAnalysisResult(BaseModel):
+    agent_id: str = "stock_assistant"
+    skill: str = "stock-analysis"
+    skill_source: str
+    stocks: str
+    report: str
+    raw_data: dict
+    data_script: str
+    news_enabled: bool
+    disclaimer: str

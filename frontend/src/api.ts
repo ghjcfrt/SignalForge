@@ -8,6 +8,7 @@ import type {
   MoneyPrinterTurboStatus,
   TopicSeed,
   WorkflowRun
+  ,StockAnalysisResult
 } from "./types";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -51,6 +52,13 @@ export function generateScript(payload: {
   return request<AgentOutput>("/api/scripts/generate", {
     method: "POST",
     body: JSON.stringify(payload)
+  });
+}
+
+export function analyzeStocks(payload: { stocks: string; days?: number; include_news?: boolean }) {
+  return request<StockAnalysisResult>("/api/stocks/analyze", {
+    method: "POST",
+    body: JSON.stringify({ days: 120, include_news: true, ...payload })
   });
 }
 

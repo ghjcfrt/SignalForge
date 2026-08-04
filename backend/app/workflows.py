@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import urlparse
+import asyncio
+import os
+import sys
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -14,10 +18,79 @@ from backend.app.schemas import (
     Topic,
     TopicSeed,
     WorkflowRun,
+    StockAnalysisRequest,
+    StockAnalysisResult,
 )
 
 
 RUNS: dict[str, WorkflowRun] = {}
+STOCK_SKILL_DIR = WORKSPACE_DIR / "agents" / "stock_assistant" / "skills" / "stock-analysis"
+STOCK_DATA_SCRIPT = STOCK_SKILL_DIR / "references" / "stock_data_fetcher.py"
+STOCK_ANALYSIS_PROMPT = STOCK_SKILL_DIR / "references" / "analysis-prompt-template.md"
+STOCK_OUTPUT_TEMPLATE = STOCK_SKILL_DIR / "references" / "output-format-template.md"
+
+
+async def analyze_stocks(request: StockAnalysisRequest, settings: Settings) -> StockAnalysisResult:
+    """Run the installed Stock Analysis Skill for finance/stock requests."""
+    if not STOCK_DATA_SCRIPT.exists():
+        raise FileNotFoundError(f"Stock Analysis Skill data script not found: {STOCK_DATA_SCRIPT}")
+
+    env = os.environ.copy()
+    for name, value in {
+        "TUSHARE_TOKEN": settings.tushare_token,
+        "TAVILY_API_KEY": settings.tavily_api_key,
+        "SERPAPI_KEY": settings.serpapi_key,
+    }.items():
+        if value:
+            env[name] = value
+
+    command = [sys.executable, str(STOCK_DATA_SCRIPT), "--stocks", request.stocks, "--days", str(request.days)]
+    if request.include_news:
+        command.append("--news")
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            cwd=STOCK_SKILL_DIR,
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.wait()
+        raise RuntimeError("Stock Analysis Skill data fetch exceeded 120 seconds")
+
+    raw_text = stdout.decode("utf-8", errors="replace")
+    if process.returncode != 0:
+        raise RuntimeError(stderr.decode("utf-8", errors="replace") or raw_text)
+    try:
+        raw_data = json.loads(raw_text)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Stock Analysis Skill returned invalid JSON: {raw_text[-500:]}") from exc
+
+    fallback = json.dumps(raw_data, ensure_ascii=False, indent=2)
+    prompt = STOCK_ANALYSIS_PROMPT.read_text(encoding="utf-8") if STOCK_ANALYSIS_PROMPT.exists() else ""
+    template = STOCK_OUTPUT_TEMPLATE.read_text(encoding="utf-8") if STOCK_OUTPUT_TEMPLATE.exists() else ""
+    gateway = LlmGateway(settings)
+    result = await gateway.complete(
+        system=(
+            "你是 SignalForge 的股票助手林量。严格依据输入的真实数据和新闻输出中文股票决策看板。"
+            "不得编造价格或新闻；缺失数据必须明确标注。必须包含数据来源、分析时间、风险和免责声明。"
+            "这不是投资建议。\n\n分析框架：\n" + prompt + "\n\n输出模板：\n" + template
+        ),
+        user="请分析以下 Stock Analysis Skill 数据：\n" + fallback,
+        fallback=fallback + "\n\n> 免责声明：以上分析仅供参考，不构成投资建议。投资有风险，入市需谨慎。",
+    )
+    return StockAnalysisResult(
+        skill_source="https://github.com/liusai0820/Stock-Analysis-Skill",
+        stocks=request.stocks,
+        report=result.content,
+        raw_data=raw_data,
+        data_script=str(STOCK_DATA_SCRIPT),
+        news_enabled=request.include_news,
+        disclaimer="以上分析仅供参考，不构成投资建议。投资有风险，入市需谨慎。",
+    )
 
 
 def _now() -> datetime:
@@ -51,6 +124,7 @@ def _fallback_topics(seed: TopicSeed) -> list[Topic]:
             title="AI 编程 Agent 从演示走向日常生产",
             heat=92,
             source_hint="B站搜索：AI Agent 编程 / 一人公司 / 自动化工作流",
+            verification_note="仅为本地模板线索，未连接实时来源核验。",
             angle="强调普通创作者也能把 Agent 当员工调度，而不是只看模型发布会。",
             risk="避免夸大自动化能力，明确仍需要老板决策和事实核查。",
         ),
@@ -58,6 +132,7 @@ def _fallback_topics(seed: TopicSeed) -> list[Topic]:
             title="短视频自动成片工具正在重塑内容团队",
             heat=86,
             source_hint="GitHub/社区：MoneyPrinterTurbo、自动字幕、TTS、素材抓取",
+            verification_note="仅为本地模板线索，未连接实时来源核验。",
             angle="从脚本、配音、字幕到剪辑方案，解释自动成片链路的真实边界。",
             risk="版权素材、声音授权、平台重复内容审核需要重点提醒。",
         ),
@@ -65,6 +140,7 @@ def _fallback_topics(seed: TopicSeed) -> list[Topic]:
             title="个人知识库 + Skill 让 AI 员工更像专员",
             heat=81,
             source_hint="博客/开源技能库：mattpocock/skills、Qclaw 教程思路",
+            verification_note="仅为本地模板线索，未连接实时来源核验。",
             angle="Skill 不是魔法，而是把固定流程和工具说明封装给 Agent。",
             risk="避免把第三方教程说成唯一方案，保留开源项目致谢。",
         ),
@@ -85,6 +161,9 @@ def _fallback_hotspot_report(seed: TopicSeed, topics: list[Topic]) -> str:
                 f"## {index}. {topic.title}",
                 f"- 热度：{topic.heat}/100",
                 f"- 线索：{topic.source_hint}",
+                f"- 多方来源：{len(topic.sources)} 个",
+                f"- 交叉验证：{topic.cross_check_note}",
+                f"- 核验状态：{topic.verification_status}（{topic.verification_note}）",
                 f"- 推荐角度：{topic.angle}",
                 f"- 风险提示：{topic.risk}",
                 "",
@@ -104,6 +183,25 @@ def _parse_topics(raw: str, seed: TopicSeed) -> list[Topic]:
     return topics[:5] or _fallback_topics(seed)
 
 
+def _verified_topics(topics: list[Topic]) -> list[Topic]:
+    def independent_sources(topic: Topic) -> bool:
+        domains = {
+            (urlparse(source.url).netloc or "").lower()
+            for source in topic.sources
+            if source.url
+        }
+        return len(topic.sources) >= 2 and len(domains) >= 2
+
+    return [
+        topic
+        for topic in topics
+        if topic.verification_status == "verified"
+        and topic.checked_at
+        and topic.cross_check_note.strip()
+        and independent_sources(topic)
+    ]
+
+
 async def scout_topics(seed: TopicSeed, settings: Settings) -> tuple[list[Topic], AgentOutput]:
     run_dir = WORKSPACE_DIR / "scratch" / "topic-scout"
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -114,7 +212,10 @@ async def scout_topics(seed: TopicSeed, settings: Settings) -> tuple[list[Topic]
     result = await gateway.complete(
         system=(
             "你是热讯工坊的热点监控员赵爽。你只输出 JSON，不输出解释。"
-            "字段必须是 topics 数组，每个元素包含 title, heat, source_hint, angle, risk。"
+            "字段必须是 topics 数组，每个元素包含 title, heat, source_hint, sources, "
+            "cross_check_note, checked_at, verification_status, verification_note, angle, risk。"
+            "sources 至少包含两个相互独立的来源，每个来源必须有 name, url, published_at, claim。"
+            "只有两方来源对同一事实交叉印证后才可标记 verified；单一来源或转载链只能是 unverified。"
         ),
         user=(
             f"领域：{seed.domain}\n方向：{seed.brief}\n受众：{seed.audience}\n"
@@ -189,8 +290,10 @@ async def run_hot_video_workflow(seed: TopicSeed, settings: Settings) -> Workflo
         )
         scout_result = await gateway.complete(
             system=(
-                "你是热点监控员赵爽。只输出 JSON："
-                "{\"topics\":[{\"title\":\"\",\"heat\":0,\"source_hint\":\"\",\"angle\":\"\",\"risk\":\"\"}]}"
+                "你是热点监控员赵爽。只输出 JSON。每个 topic 必须包含 title, heat, source_hint, sources, "
+                "cross_check_note, checked_at, verification_status, verification_note, angle, risk。"
+                "sources 至少包含两个相互独立的来源，每个来源必须有 name, url, published_at, claim。"
+                "只有两方来源对同一事实交叉印证后才可标记 verified；单一来源或转载链只能是 unverified。"
             ),
             user=f"领域：{seed.domain}\n方向：{seed.brief}\n受众：{seed.audience}",
             fallback=scout_fallback,
@@ -201,7 +304,10 @@ async def run_hot_video_workflow(seed: TopicSeed, settings: Settings) -> Workflo
             _output(run_dir, "hotspot_monitor", "热点监控报告", _fallback_hotspot_report(seed, topics))
         )
 
-        selected = topics[0]
+        verified_topics = _verified_topics(topics)
+        if not verified_topics:
+            raise RuntimeError("没有通过至少两个独立来源交叉验证的新闻线索，已停止后续爆款分析、脚本和发布流程。")
+        selected = verified_topics[0]
         analyst_fallback = f"""# 爆款分析：{selected.title}
 
 - 核心冲突：普通人期待 AI 提效，但真实落地需要流程、边界和复盘。
@@ -266,7 +372,7 @@ async def run_hot_video_workflow(seed: TopicSeed, settings: Settings) -> Workflo
 ## 导出
 - 可执行命令：
   uv run --no-project --python 3.11 python mpt_agent.py --subject "{selected.title}"
-- 如需真实成片，请配置 MPT_LLM_PROVIDER、MPT_LLM_API_KEY、MPT_LLM_BASE_URL、MPT_LLM_MODEL_NAME 和 MPT_PEXELS_API_KEY。
+- 如需真实成片，请配置 AI_API_KEY 和 MPT_PEXELS_API_KEY；AI_BASE_URL、AI_MODEL 可按需调整。
 """
         editor = await gateway.complete(
             system="你是视频剪辑员小李。优先使用 MoneyPrinterTurbo 官方 Agent Skill。输出可执行剪辑方案，包含工具出处、画幅、素材、字幕、配音、导出命令。",

@@ -6,6 +6,7 @@ import {
   Code2,
   HeartHandshake,
   LayoutDashboard,
+  MessageCircle,
   Megaphone,
   Newspaper,
   PenLine,
@@ -18,8 +19,10 @@ import {
 export const navItems = [
   { id: "overview", label: "总览", icon: LayoutDashboard },
   { id: "radar", label: "热点雷达", icon: Radio },
+  { id: "stocks", label: "股票分析", icon: TrendingUp },
   { id: "scripts", label: "脚本工坊", icon: PenLine },
   { id: "editing", label: "剪辑队列", icon: Clapperboard },
+  { id: "engagement", label: "互动回复", icon: MessageCircle },
   { id: "agents", label: "员工", icon: UsersRound },
   { id: "settings", label: "设置", icon: Settings }
 ] as const;

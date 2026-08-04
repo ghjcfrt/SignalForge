@@ -12,6 +12,8 @@ from backend.app.schemas import (
     Topic,
     TopicSeed,
     WorkflowRun,
+    StockAnalysisRequest,
+    StockAnalysisResult,
 )
 from backend.app.workflows import (
     generate_script,
@@ -19,6 +21,7 @@ from backend.app.workflows import (
     list_runs,
     run_hot_video_workflow,
     scout_topics,
+    analyze_stocks,
 )
 from backend.app.video_tools import (
     MoneyPrinterTurboRequest,
@@ -57,10 +60,10 @@ async def health() -> dict[str, str]:
 async def api_status() -> ApiStatus:
     settings = get_settings()
     return ApiStatus(
-        key_variable="OPENAI_API_KEY_YW_SF",
+        key_variable="AI_API_KEY",
         has_key=settings.ai_enabled,
-        base_url=settings.openai_base_url_yw_sf,
-        model=settings.openai_model_yw_sf,
+        base_url=settings.ai_base_url,
+        model=settings.ai_model or "中转站自动选择",
         mode="live" if settings.ai_enabled else "local-template",
     )
 
@@ -79,6 +82,11 @@ async def topics(seed: TopicSeed) -> list[Topic]:
 @app.post("/api/scripts/generate", response_model=AgentOutput)
 async def scripts(request: GenerateScriptRequest) -> AgentOutput:
     return await generate_script(request, get_settings())
+
+
+@app.post("/api/stocks/analyze", response_model=StockAnalysisResult)
+async def stocks(request: StockAnalysisRequest) -> StockAnalysisResult:
+    return await analyze_stocks(request, get_settings())
 
 
 @app.post("/api/workflows/hot-video", response_model=WorkflowRun)

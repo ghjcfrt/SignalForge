@@ -8,9 +8,9 @@
 
 后端默认使用 OpenAI 兼容接口：
 
-- Key 环境变量：`OPENAI_API_KEY_YW_SF`
+- AI 密钥环境变量：`AI_API_KEY`
 - Base URL：`https://api.wlai.vip/v1`
-- Model：默认 `gpt-4o-mini`，可用 `OPENAI_MODEL_YW_SF` 覆盖
+- Model：`AI_MODEL` 非必填；留空时由 AI 中转站自动选择
 
 没有配置 key 时，项目仍可运行，会使用本地模板输出，方便先验证工作流。
 
@@ -20,16 +20,16 @@ PowerShell：
 
 ```powershell
 Copy-Item .env.example .env
-# 编辑 .env，填入 OPENAI_API_KEY_YW_SF
+# 编辑 .env，填入 AI_API_KEY
 
 .\scripts\setup.ps1
-.\scripts\dev-backend.ps1
+.\start.ps1
 ```
 
 另开一个 PowerShell：
 
 ```powershell
-.\scripts\dev-frontend.ps1
+ （无需再单独启动前端，`start.ps1` 会自动启动前后端。）
 ```
 
 默认地址：
@@ -42,6 +42,7 @@ Copy-Item .env.example .env
 
 | 职位       | 员工   | 负责内容                                                      |
 | ---------- | ------ | ------------------------------------------------------------- |
+
 | 热点监控员 | 赵爽   | 搜集 AI 圈、B站/社媒热点，沉淀选题                            |
 | 爆款分析师 | 星辰   | 分析传播钩子、争议点和内容结构                                |
 | 文案助手   | 洛一   | 生成 90-120 秒短视频脚本                                      |
@@ -85,10 +86,9 @@ python -m uv run --no-project --python 3.11 python mpt_agent.py --subject "视�
 真实成片需要配置：
 
 ```text
-MPT_LLM_PROVIDER=oneapi
-MPT_LLM_API_KEY=<可复用 OPENAI_API_KEY_YW_SF 的值>
-MPT_LLM_BASE_URL=https://api.wlai.vip/v1
-MPT_LLM_MODEL_NAME=gpt-4o-mini
+AI_API_KEY=<AI 服务 API Key>
+AI_BASE_URL=https://api.wlai.vip/v1
+AI_MODEL=
 MPT_PEXELS_API_KEY=<Pexels API Key>
 ```
 
@@ -110,7 +110,9 @@ MPT_PEXELS_API_KEY=<Pexels API Key>
 
 当前对外展示和默认剪辑链路只使用 MoneyPrinterTurbo。
 
-爆款分析师、文案助手、程序员、股票助手目前使用项目内置基础岗位提示词和工作流逻辑，尚未安装单独第三方 Skill。
+股票助手已安装 `stock-analysis`，接口为 `POST /api/stocks/analyze`；涉及财经、股票或股票新闻时使用该 Skill。可选配置 `TUSHARE_TOKEN`、`TAVILY_API_KEY`、`SERPAPI_KEY` 增强数据质量和新闻抓取。爆款分析师使用 `SpaceZephyr/creator-buddy` 的 `space-xhs-hotspot` 子 Skill；文案助手和程序员按设计不安装单独 Skill。
+
+新闻真实性边界：热点线索必须同时具备至少两个相互独立的来源、来源 URL、各自发布时间、对同一事实的交叉验证说明，并标记为 `verified`，才能进入后续爆款分析、脚本和发布流程。相同转载链、单一来源或只有模型推测的内容都不算多方验证；未满足条件时系统只展示“未核验线索”，并停止后续生产链路。
 
 ## 项目结构
 
@@ -145,3 +147,10 @@ scripts/
 - ClawHub/Volces Skill：`bilibili-search`、`newmedia-operations`、`mental-health-assistant`
 
 本仓库没有复制 MoneyPrinterTurbo 主项目源码；当前仅保存其官方 Agent Skill、helper、README 备份与 MIT License。helper 在真实生成视频时会通过 `uv` 安装和调用 MoneyPrinterTurbo。
+## Local deployment
+
+Requirements: Windows PowerShell, Python 3.11+, Node.js 18+, and `uv`.
+
+For a fresh checkout, run `Copy-Item .env.example .env`, configure `.env` if needed, then run `.\scripts\setup.ps1` once. After installation, run `.\start.ps1` from the repository root to start both services and open the frontend automatically.
+
+Default endpoints: frontend `http://127.0.0.1:5173`, backend `http://127.0.0.1:8017`, API docs `http://127.0.0.1:8017/docs`.

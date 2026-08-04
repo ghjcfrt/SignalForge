@@ -50,6 +50,30 @@ export interface AgentOutput {
   created_at: string;
 }
 
+export interface EngagementComment {
+  id: string;
+  author: string;
+  content: string;
+  source: string;
+  time: string;
+  category: "情绪支持" | "内容讨论" | "产品咨询";
+  assignedAgentId: string;
+  priority: "高" | "普通";
+  status: "待回复" | "已回复";
+}
+
+export interface StockAnalysisResult {
+  agent_id: string;
+  skill: string;
+  skill_source: string;
+  stocks: string;
+  report: string;
+  raw_data: Record<string, unknown>;
+  data_script: string;
+  news_enabled: boolean;
+  disclaimer: string;
+}
+
 export interface WorkflowRun {
   id: string;
   status: WorkflowStatus;

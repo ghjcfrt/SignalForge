@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from dotenv import load_dotenv
-from pydantic import Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,18 +15,28 @@ load_dotenv(ROOT_DIR / ".env")
 class Settings(BaseSettings):
     """Runtime configuration for the workshop."""
 
-    openai_api_key_yw_sf: str | None = Field(default=None, alias="OPENAI_API_KEY_YW_SF")
-    openai_base_url_yw_sf: str = Field(
-        default="https://api.wlai.vip/v1",
-        alias="OPENAI_BASE_URL_YW_SF",
+    ai_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("AI_API_KEY", "OPENAI_API_KEY_YW_SF", "MPT_LLM_API_KEY"),
     )
-    openai_model_yw_sf: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL_YW_SF")
-    mpt_llm_provider: str | None = Field(default=None, alias="MPT_LLM_PROVIDER")
-    mpt_llm_api_key: str | None = Field(default=None, alias="MPT_LLM_API_KEY")
-    mpt_llm_base_url: str | None = Field(default=None, alias="MPT_LLM_BASE_URL")
-    mpt_llm_model_name: str | None = Field(default=None, alias="MPT_LLM_MODEL_NAME")
+    ai_base_url: str = Field(
+        default="https://api.wlai.vip/v1",
+        validation_alias=AliasChoices("AI_BASE_URL", "OPENAI_BASE_URL_YW_SF", "MPT_LLM_BASE_URL"),
+    )
+    ai_model: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("AI_MODEL", "OPENAI_MODEL_YW_SF", "MPT_LLM_MODEL_NAME"),
+    )
     mpt_pexels_api_key: str | None = Field(default=None, alias="MPT_PEXELS_API_KEY")
     backend_port: int = Field(default=8017, alias="BACKEND_PORT")
+    tushare_token: str | None = Field(default=None, alias="TUSHARE_TOKEN")
+    tavily_api_key: str | None = Field(default=None, alias="TAVILY_API_KEY")
+    serpapi_key: str | None = Field(default=None, alias="SERPAPI_KEY")
+
+    @field_validator("ai_model", mode="before")
+    @classmethod
+    def empty_model_means_auto(cls, value: str | None) -> str | None:
+        return value.strip() or None if isinstance(value, str) else value
 
     model_config = SettingsConfigDict(
         env_file=ROOT_DIR / ".env",
@@ -37,7 +47,7 @@ class Settings(BaseSettings):
 
     @property
     def ai_enabled(self) -> bool:
-        return bool(self.openai_api_key_yw_sf)
+        return bool(self.ai_api_key)
 
 
 @lru_cache
