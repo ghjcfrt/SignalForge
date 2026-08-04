@@ -7,7 +7,9 @@ import type {
   MoneyPrinterTurboRunResult,
   MoneyPrinterTurboStatus,
   TopicSeed,
-  WorkflowRun
+  Topic,
+  WorkflowRun,
+  TimeoutSettings
   ,StockAnalysisResult
 } from "./types";
 
@@ -21,7 +23,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    const message = await response.text();
+    const body = await response.text();
+    let message = body;
+    try {
+      const payload = JSON.parse(body) as { detail?: string };
+      message = payload.detail || body;
+    } catch {
+      // Keep non-JSON server responses readable.
+    }
     throw new Error(message || `请求失败：${response.status}`);
   }
 
@@ -32,6 +41,17 @@ export function fetchStatus() {
   return request<ApiStatus>("/api/status");
 }
 
+export function fetchTimeoutSettings() {
+  return request<TimeoutSettings>("/api/settings/timeouts");
+}
+
+export function updateTimeoutSettings(payload: TimeoutSettings) {
+  return request<TimeoutSettings>("/api/settings/timeouts", {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
 export function fetchAgents() {
   return request<Agent[]>("/api/agents");
 }
@@ -40,6 +60,17 @@ export function runHotVideoWorkflow(seed: TopicSeed) {
   return request<WorkflowRun>("/api/workflows/hot-video", {
     method: "POST",
     body: JSON.stringify({ seed })
+  });
+}
+
+export function resumeWorkflow(runId: string) {
+  return request<WorkflowRun>(`/api/workflows/${runId}/resume`, { method: "POST" });
+}
+
+export function scoutTopics(seed: TopicSeed) {
+  return request<Topic[]>("/api/topics/scout", {
+    method: "POST",
+    body: JSON.stringify(seed)
   });
 }
 
@@ -95,4 +126,18 @@ export function stopFrontend() {
 
 export function shutdownAll() {
   return request<ControlResult>("/local-control/shutdown", { method: "POST" });
+}
+
+export async function exportWorkflow(runId: string) {
+  const response = await fetch(`/api/workflows/${runId}/export`);
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
+export async function importWorkflow(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch("/api/workflows/import", { method: "POST", body: form });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json() as Promise<WorkflowRun>;
 }

@@ -71,6 +71,9 @@ async function getPortProcesses(port: number): Promise<ManagedProcess[]> {
   const script = `
 $portValue = ${port}
 $root = ${root}
+function Test-BackendCommand([string]$commandLine) {
+  return ($commandLine -match '(?i)backend\.app\.main:app' -and $commandLine -match '(?i)(uvicorn(?:\.exe)?|python(?:\.exe)?)')
+}
 $pids = @(Get-NetTCPConnection -LocalPort $portValue -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Listen' -and [int]$_.OwningProcess -gt 0 } | Select-Object -ExpandProperty OwningProcess -Unique)
 $items = foreach ($pidValue in $pids) {
   $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$pidValue"
@@ -81,7 +84,7 @@ $items = foreach ($pidValue in $pids) {
       parent_pid = [int]$proc.ParentProcessId
       name = [System.IO.Path]::GetFileName([string]$proc.ExecutablePath)
       command_line = $cmd
-      project_owned = $cmd.Contains($root)
+      project_owned = $cmd.Contains($root) -or (Test-BackendCommand $cmd)
     }
   }
 }
@@ -201,6 +204,9 @@ async function stopBackend() {
   const script = `
 $root = ${root}
 $portValue = ${backendPort}
+function Test-BackendCommand([string]$commandLine) {
+  return ($commandLine -match '(?i)backend\.app\.main:app' -and $commandLine -match '(?i)(uvicorn(?:\.exe)?|python(?:\.exe)?)')
+}
 $all = @(Get-CimInstance Win32_Process)
 $targets = New-Object 'System.Collections.Generic.HashSet[int]'
 function Add-Tree([int]$pidValue) {
@@ -215,7 +221,7 @@ foreach ($pidValue in $portPids) {
   $proc = $all | Where-Object { [int]$_.ProcessId -eq [int]$pidValue } | Select-Object -First 1
   if ($proc) {
     $cmd = [string]$proc.CommandLine
-    if ($cmd.Contains($root) -and ($cmd.Contains('uvicorn') -or $cmd.Contains('backend.app.main') -or $cmd.Contains('dev-backend.ps1') -or $cmd.Contains('.venv'))) {
+    if (($cmd.Contains($root) -or (Test-BackendCommand $cmd)) -and ($cmd.Contains('uvicorn') -or $cmd.Contains('backend.app.main') -or $cmd.Contains('dev-backend.ps1') -or $cmd.Contains('.venv'))) {
       Add-Tree([int]$proc.ProcessId)
     }
   }
@@ -225,7 +231,7 @@ foreach ($proc in $all) {
     continue
   }
   $cmd = [string]$proc.CommandLine
-  if ($cmd.Contains($root) -and ($cmd.Contains('dev-backend.ps1') -or ($cmd.Contains('uvicorn') -and $cmd.Contains('backend.app.main')))) {
+  if (($cmd.Contains($root) -or (Test-BackendCommand $cmd)) -and ($cmd.Contains('dev-backend.ps1') -or ($cmd.Contains('uvicorn') -and $cmd.Contains('backend.app.main')))) {
     Add-Tree([int]$proc.ProcessId)
   }
 }

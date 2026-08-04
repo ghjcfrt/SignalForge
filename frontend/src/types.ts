@@ -24,6 +24,13 @@ export interface ApiStatus {
   base_url: string;
   model: string;
   mode: "live" | "local-template";
+  model_available: boolean;
+  diagnostic: string | null;
+}
+
+export interface TimeoutSettings {
+  news_fetch_timeout_seconds: number;
+  model_timeout_seconds: number;
 }
 
 export interface TopicSeed {
@@ -39,6 +46,9 @@ export interface Topic {
   source_hint: string;
   angle: string;
   risk: string;
+  verification_status?: "verified" | "unverified";
+  verification_note?: string;
+  sources?: Array<{ name: string; url: string; published_at: string; claim: string }>;
 }
 
 export interface AgentOutput {
@@ -84,6 +94,9 @@ export interface WorkflowRun {
   created_at: string;
   completed_at: string | null;
   error: string | null;
+  current_stage?: string | null;
+  resumable?: boolean;
+  source_status?: Record<string, string>;
 }
 
 export interface MoneyPrinterTurboStatus {

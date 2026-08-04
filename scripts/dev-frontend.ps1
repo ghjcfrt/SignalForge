@@ -7,7 +7,11 @@ if ($listeners.Count -gt 0) {
     $projectListener = $false
     foreach ($listener in $listeners) {
         $process = Get-CimInstance Win32_Process -Filter "ProcessId=$($listener.OwningProcess)"
-        if ([string]$process.CommandLine -like "*$workspaceRoot*") {
+        $commandLine = [string]$process.CommandLine
+        if ($commandLine -like "*$workspaceRoot*" -or
+            ($commandLine -match '(?i)(vite|vite\.js)' -and
+             $commandLine -match '(?i)(^|[\\/ ])frontend([\\/ ]|$)' -and
+             $commandLine -match "(?i)(--port\s+)?$frontendPort(\s|$)")) {
             $projectListener = $true
         }
     }

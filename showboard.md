@@ -171,7 +171,6 @@
 
 ### 5.4 多岗位与技能能力
 - 已装专项 Skill：
-  - 热点监控员：bilibili-search
   - 视频剪辑员：moneyprinterturbo-video
   - 运营大师：newmedia-operations
   - 产品经理：Product-Manager-Skills

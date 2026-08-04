@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Archive,
@@ -18,6 +18,7 @@ import {
   RefreshCcw,
   RotateCcw,
   Search,
+  Save,
   Server,
   Sparkles,
   Square,
@@ -34,11 +35,17 @@ import {
   generateScript,
   restartBackend,
   runHotVideoWorkflow,
+  resumeWorkflow,
   runMoneyPrinterTurbo,
+  scoutTopics,
   shutdownAll,
   startBackend,
   stopBackend,
   stopFrontend
+  ,exportWorkflow
+  ,importWorkflow
+  ,fetchTimeoutSettings
+  ,updateTimeoutSettings
 } from "./api";
 import { navItems, pipeline, roleIcons } from "./data";
 import type {
@@ -51,8 +58,10 @@ import type {
   SystemStatus,
   TopicSeed,
   WorkflowRun
+  ,Topic
   ,StockAnalysisResult
   ,EngagementComment
+  ,TimeoutSettings
 } from "./types";
 
 type ViewId = (typeof navItems)[number]["id"];
@@ -62,6 +71,11 @@ const defaultSeed: TopicSeed = {
   brief: "近期 AI 产品、模型、创业工具或内容生产热点",
   audience: "关注 AI 工具的一线创作者和创业者",
   duration_seconds: 110
+};
+
+const defaultTimeoutSettings: TimeoutSettings = {
+  news_fetch_timeout_seconds: 90,
+  model_timeout_seconds: 30
 };
 
 const statusText = {
@@ -150,9 +164,9 @@ function ShellNav({
       </nav>
 
       <div className="boss-card">
-        <span>老板模式</span>
-        <strong>你负责决策</strong>
-        <p>AI 员工负责收集、分析、撰写、剪辑和运营产物。</p>
+        <span>实时 AI 工作台</span>
+        <strong>你负责方向与验收</strong>
+        <p>Agent 实时调用模型，协同完成收集、分析、写作、剪辑和运营。</p>
       </div>
 
       <button className="shutdown-button" onClick={onShutdown} disabled={closing || shutdownComplete} type="button">
@@ -183,8 +197,8 @@ function TopBar({
         <p>{meta.subtitle}</p>
       </div>
       <div className="topbar-actions">
-        <div className={cn("api-pill", status?.has_key ? "ok" : "warn")}>
-          {status?.has_key ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+        <div className={cn("api-pill", status?.mode === "live" ? "ok" : "warn")} title={status?.diagnostic ?? undefined}>
+          {status?.mode === "live" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
           <span>{status ? statusText[status.mode] : "检测中"}</span>
         </div>
         <button className="primary-button" onClick={onRun} disabled={running}>
@@ -210,6 +224,15 @@ function PipelineBoard({ run, running }: { run: WorkflowRun | null; running: boo
           {running ? "Running" : run?.status ?? "Ready"}
         </span>
       </div>
+      {run?.status === "failed" && run.error && (
+        <div className="pipeline-error" role="alert">
+          <AlertCircle size={17} />
+          <div>
+            <strong>流水线失败</strong>
+            <span>{run.current_stage ? `阶段：${run.current_stage}。` : ""}{run.error}</span>
+          </div>
+        </div>
+      )}
 
       <div className="pipeline-grid">
         {pipeline.map((stage, index) => {
@@ -294,7 +317,7 @@ function AgentRoster({ agents }: { agents: Agent[] }) {
       <div className="panel-heading tight">
         <div>
           <h2>AI 员工</h2>
-          <p>每个员工拥有独立 Workspace。</p>
+          <p>每个员工都有清晰职责和专属技能。</p>
         </div>
       </div>
       <div className="roster-list">
@@ -321,7 +344,8 @@ function AgentRoster({ agents }: { agents: Agent[] }) {
   );
 }
 
-function TopicList({ run }: { run: WorkflowRun | null }) {
+function TopicList({ run, topics }: { run?: WorkflowRun | null; topics?: Topic[] }) {
+  const items = topics ?? run?.topics ?? [];
   return (
     <section className="panel topics-panel">
       <div className="panel-heading tight">
@@ -331,7 +355,7 @@ function TopicList({ run }: { run: WorkflowRun | null }) {
         </div>
       </div>
       <div className="topic-list">
-        {(run?.topics ?? []).map((topic) => (
+        {items.map((topic) => (
           <article className="topic-card" key={topic.title}>
             <div className="heat">
               <Sparkles size={15} />
@@ -342,7 +366,7 @@ function TopicList({ run }: { run: WorkflowRun | null }) {
             <small>{topic.source_hint}</small>
           </article>
         ))}
-        {!run?.topics?.length && (
+        {!items.length && (
           <div className="empty-state">
             <RefreshCcw size={20} />
             <span>运行工作流后，这里会显示热点候选。</span>
@@ -359,7 +383,7 @@ function OutputList({ outputs }: { outputs: AgentOutput[] }) {
       <div className="panel-heading tight">
         <div>
           <h2>产物与日志</h2>
-          <p>每个 Agent 的结果都会写入本地工作区。</p>
+          <p>每个 Agent 的结果都会保存到本地任务记录。</p>
         </div>
       </div>
       <div className="outputs-list">
@@ -393,22 +417,22 @@ function SettingsStrip({ status }: { status: ApiStatus | null }) {
       </div>
       <div>
         <span>Base URL</span>
-        <strong>{status?.base_url ?? "https://api.wlai.vip/v1"}</strong>
+        <strong>{status?.base_url ?? "https://api.openlux.ai/v1"}</strong>
       </div>
       <div>
         <span>Model</span>
         <strong>{status?.model ?? "中转站自动选择"}</strong>
       </div>
       <div>
-        <span>Workspace</span>
-        <strong>workspaces/agents/*</strong>
+        <span>AI Health</span>
+        <strong>{status?.model_available ? "模型可用" : status?.diagnostic ?? "检查中"}</strong>
       </div>
     </section>
   );
 }
 
-function RadarView({ run, seed, onChange, onRun, running }: {
-  run: WorkflowRun | null;
+function RadarView({ topics, seed, onChange, onRun, running }: {
+  topics: Topic[];
   seed: TopicSeed;
   onChange: (seed: TopicSeed) => void;
   onRun: () => void;
@@ -442,7 +466,7 @@ function RadarView({ run, seed, onChange, onRun, running }: {
           </label>
         </div>
       </section>
-      <TopicList run={run} />
+      <TopicList topics={topics} />
     </div>
   );
 }
@@ -588,7 +612,7 @@ function AgentsView({ agents }: { agents: Agent[] }) {
       <div className="panel-heading tight">
         <div>
           <h2>员工档案</h2>
-          <p>每个 AI 员工都有清晰职责、技能来源和独立 Workspace。</p>
+          <p>每个 AI 员工都有清晰职责和技能来源。</p>
         </div>
       </div>
       <div className="agent-detail-grid">
@@ -604,7 +628,6 @@ function AgentsView({ agents }: { agents: Agent[] }) {
               </div>
               <h3>{agent.title}</h3>
               <p>{agent.role}</p>
-              <small className="agent-workspace">{agent.workspace}</small>
               <div className="skill-list">
                 {agent.skills.length ? (
                   agent.skills.map((skill) => (
@@ -819,10 +842,83 @@ function ServiceCard({
   );
 }
 
-function SettingsView({ status, onBackendStateChange }: { status: ApiStatus | null; onBackendStateChange: () => void }) {
+function SettingsView({ status, currentRun, onImport, onBackendStateChange }: { status: ApiStatus | null; currentRun: WorkflowRun | null; onImport: (run: WorkflowRun) => void; onBackendStateChange: () => void }) {
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [controlBusy, setControlBusy] = useState<ControlAction | null>(null);
   const [controlMessage, setControlMessage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [timeoutSettings, setTimeoutSettings] = useState<TimeoutSettings | null>(null);
+  const [timeoutDraft, setTimeoutDraft] = useState<TimeoutSettings>(defaultTimeoutSettings);
+  const [unlimitedTimeouts, setUnlimitedTimeouts] = useState({ news: false, model: false });
+  const [timeoutBusy, setTimeoutBusy] = useState(false);
+  const [timeoutMessage, setTimeoutMessage] = useState<string | null>(null);
+
+  function applyTimeoutSettings(next: TimeoutSettings) {
+    setTimeoutSettings(next);
+    setTimeoutDraft({
+      news_fetch_timeout_seconds: next.news_fetch_timeout_seconds || defaultTimeoutSettings.news_fetch_timeout_seconds,
+      model_timeout_seconds: next.model_timeout_seconds || defaultTimeoutSettings.model_timeout_seconds
+    });
+    setUnlimitedTimeouts({
+      news: next.news_fetch_timeout_seconds === 0,
+      model: next.model_timeout_seconds === 0
+    });
+  }
+
+  function updateTimeoutDraft(field: keyof TimeoutSettings, value: string) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    setTimeoutDraft((current) => ({ ...current, [field]: Math.max(1, Math.floor(parsed)) }));
+  }
+
+  function toggleUnlimited(field: "news" | "model", enabled: boolean) {
+    setUnlimitedTimeouts((current) => ({ ...current, [field]: enabled }));
+    if (!enabled) {
+      const draftField = field === "news" ? "news_fetch_timeout_seconds" : "model_timeout_seconds";
+      setTimeoutDraft((current) => ({
+        ...current,
+        [draftField]: current[draftField] || defaultTimeoutSettings[draftField]
+      }));
+    }
+  }
+
+  async function handleTimeoutSave() {
+    setTimeoutBusy(true);
+    setTimeoutMessage(null);
+    try {
+      const saved = await updateTimeoutSettings({
+        news_fetch_timeout_seconds: unlimitedTimeouts.news ? 0 : timeoutDraft.news_fetch_timeout_seconds,
+        model_timeout_seconds: unlimitedTimeouts.model ? 0 : timeoutDraft.model_timeout_seconds
+      });
+      applyTimeoutSettings(saved);
+      setTimeoutMessage("热点扫描超时设置已保存");
+    } catch (err) {
+      setTimeoutMessage(err instanceof Error ? err.message : "保存超时设置失败");
+    } finally {
+      setTimeoutBusy(false);
+    }
+  }
+
+  async function handleExport() {
+    if (!currentRun) { setControlMessage("当前没有可导出的项目"); return; }
+    try {
+      const data = await exportWorkflow(currentRun.id);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `signalforge-${currentRun.id}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setControlMessage("项目已导出");
+    } catch (err) { setControlMessage(err instanceof Error ? err.message : "导出失败"); }
+  }
+
+  async function handleImport(file: File | undefined) {
+    if (!file) return;
+    try { onImport(await importWorkflow(file)); setControlMessage("项目已导入"); }
+    catch (err) { setControlMessage(err instanceof Error ? err.message : "导入失败"); }
+  }
 
   async function refreshSystemStatus() {
     const next = await fetchSystemStatus();
@@ -836,6 +932,12 @@ function SettingsView({ status, onBackendStateChange }: { status: ApiStatus | nu
       refreshSystemStatus().catch(() => undefined);
     }, 5000);
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    fetchTimeoutSettings()
+      .then(applyTimeoutSettings)
+      .catch((err: Error) => setTimeoutMessage(err.message));
   }, []);
 
   async function handleControl(action: ControlAction) {
@@ -896,7 +998,7 @@ function SettingsView({ status, onBackendStateChange }: { status: ApiStatus | nu
           <div>
             <ExternalLink size={18} />
             <span>Base URL</span>
-            <strong>{status?.base_url ?? "https://api.wlai.vip/v1"}</strong>
+            <strong>{status?.base_url ?? "https://api.openlux.ai/v1"}</strong>
           </div>
           <div>
             <Bot size={18} />
@@ -908,6 +1010,81 @@ function SettingsView({ status, onBackendStateChange }: { status: ApiStatus | nu
             <span>AI Mode</span>
             <strong>{status ? statusText[status.mode] : "检测中"}</strong>
           </div>
+        </div>
+      </section>
+      <section className="panel settings-panel">
+        <div className="panel-heading tight">
+          <div><h2>项目文件</h2><p>手动保存或恢复热点、产物和流水线进度。</p></div>
+        </div>
+        <div className="mpt-actions">
+          <button className="primary-button" type="button" onClick={handleExport}><FileText size={17} /><span>导出项目</span></button>
+          <button className="ghost-button" type="button" onClick={() => fileInputRef.current?.click()}><RefreshCcw size={17} /><span>导入项目</span></button>
+          <input ref={fileInputRef} type="file" accept="application/json,.json" hidden onChange={(event) => handleImport(event.target.files?.[0])} />
+        </div>
+      </section>
+      <section className="panel settings-panel timeout-settings-panel">
+        <div className="panel-heading tight">
+          <div>
+            <h2>热点扫描超时</h2>
+            <p>控制公开来源抓取和模型整理的等待时间，0 表示不限时。</p>
+          </div>
+        </div>
+        <div className="timeout-grid">
+          <label className="timeout-field">
+            <span className="timeout-label">公开来源抓取</span>
+            <div className="timeout-input-row">
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={unlimitedTimeouts.news ? "" : timeoutDraft.news_fetch_timeout_seconds}
+                disabled={timeoutSettings === null || unlimitedTimeouts.news}
+                onChange={(event) => updateTimeoutDraft("news_fetch_timeout_seconds", event.target.value)}
+              />
+              <span>秒</span>
+            </div>
+            <span className="timeout-hint">Skill 多来源抓取</span>
+            <span className="timeout-toggle">
+              <input
+                type="checkbox"
+                checked={unlimitedTimeouts.news}
+                disabled={timeoutSettings === null}
+                onChange={(event) => toggleUnlimited("news", event.target.checked)}
+              />
+              <span>不限时</span>
+            </span>
+          </label>
+          <label className="timeout-field">
+            <span className="timeout-label">模型整理</span>
+            <div className="timeout-input-row">
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={unlimitedTimeouts.model ? "" : timeoutDraft.model_timeout_seconds}
+                disabled={timeoutSettings === null || unlimitedTimeouts.model}
+                onChange={(event) => updateTimeoutDraft("model_timeout_seconds", event.target.value)}
+              />
+              <span>秒</span>
+            </div>
+            <span className="timeout-hint">AI 生成热点候选</span>
+            <span className="timeout-toggle">
+              <input
+                type="checkbox"
+                checked={unlimitedTimeouts.model}
+                disabled={timeoutSettings === null}
+                onChange={(event) => toggleUnlimited("model", event.target.checked)}
+              />
+              <span>不限时</span>
+            </span>
+          </label>
+        </div>
+        <div className="timeout-actions">
+          <button className="primary-button" type="button" onClick={handleTimeoutSave} disabled={timeoutBusy || timeoutSettings === null}>
+            <Save size={17} />
+            <span>{timeoutBusy ? "保存中" : "保存超时设置"}</span>
+          </button>
+          {timeoutMessage && <span className="timeout-message">{timeoutMessage}</span>}
         </div>
       </section>
       <section className="panel service-panel">
@@ -986,6 +1163,7 @@ export default function App() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [seed, setSeed] = useState<TopicSeed>(defaultSeed);
   const [run, setRun] = useState<WorkflowRun | null>(null);
+  const [radarTopics, setRadarTopics] = useState<Topic[]>([]);
   const [extraOutputs, setExtraOutputs] = useState<AgentOutput[]>([]);
   const [running, setRunning] = useState(false);
   const [scriptBusy, setScriptBusy] = useState(false);
@@ -1022,8 +1200,41 @@ export default function App() {
     try {
       const result = await runHotVideoWorkflow(seed);
       setRun(result);
+      if (result.status === "failed") {
+        setError(`${result.current_stage ? `阶段：${result.current_stage}。` : ""}${result.error || "流水线失败，但服务端没有提供错误详情"}`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "工作流运行失败");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function handleResume() {
+    if (!run) return;
+    setRunning(true);
+    setError(null);
+    try {
+      const result = await resumeWorkflow(run.id);
+      setRun(result);
+      if (result.status === "failed") {
+        setError(`${result.current_stage ? `阶段：${result.current_stage}。` : ""}${result.error || "重试后仍然失败"}`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "继续重试失败");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function handleRadarScan() {
+    setRunning(true);
+    setError(null);
+    try {
+      const topics = await scoutTopics(seed);
+      setRadarTopics(topics);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "热点扫描失败");
     } finally {
       setRunning(false);
     }
@@ -1074,11 +1285,17 @@ export default function App() {
         onShutdown={handleShutdown}
       />
       <main className="main">
-        <TopBar activeView={activeView} status={status} running={running} onRun={handleRun} />
+        <TopBar activeView={activeView} status={status} running={running} onRun={activeView === "radar" ? handleRadarScan : handleRun} />
         {error && (
           <div className="error-bar">
             <AlertCircle size={17} />
             <span>{error}</span>
+            {run?.status === "failed" && run.resumable && (
+              <button className="ghost-button" type="button" onClick={handleResume} disabled={running}>
+                <RotateCcw size={15} />
+                <span>继续重试</span>
+              </button>
+            )}
           </div>
         )}
         {activeView === "overview" && (
@@ -1094,7 +1311,7 @@ export default function App() {
           />
         )}
         {activeView === "radar" && (
-          <RadarView run={run} seed={seed} onChange={setSeed} onRun={handleRun} running={running} />
+          <RadarView topics={radarTopics} seed={seed} onChange={setSeed} onRun={handleRadarScan} running={running} />
         )}
         {activeView === "stocks" && <StockAnalysisView />}
         {activeView === "scripts" && (
@@ -1109,7 +1326,7 @@ export default function App() {
         {activeView === "editing" && <EditingQueueView outputs={outputs} seed={seed} />}
         {activeView === "engagement" && <EngagementView agents={agents} />}
         {activeView === "agents" && <AgentsView agents={agents} />}
-        {activeView === "settings" && <SettingsView status={status} onBackendStateChange={() => refreshBackendData()} />}
+        {activeView === "settings" && <SettingsView status={status} currentRun={run} onImport={setRun} onBackendStateChange={() => refreshBackendData()} />}
         {activeView !== "settings" && <SettingsStrip status={status} />}
       </main>
     </div>

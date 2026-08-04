@@ -45,7 +45,7 @@ export const pipeline = [
     title: "热点监控员",
     owner: "赵爽",
     action: "搜集热点",
-    description: "追踪 AI 圈、B站与开源社区线索。"
+    description: "追踪 AI 圈与开源社区线索。"
   },
   {
     agentId: "viral_analyst",

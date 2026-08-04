@@ -9,8 +9,8 @@
 后端默认使用 OpenAI 兼容接口：
 
 - AI 密钥环境变量：`AI_API_KEY`
-- Base URL：`https://api.wlai.vip/v1`
-- Model：`AI_MODEL` 非必填；留空时由 AI 中转站自动选择
+- Base URL：`https://api.openlux.ai/v1`
+- Model：在线模式必填 `AI_MODEL`；OpenLux 示例使用 `gpt-5.6-luna`
 
 没有配置 key 时，项目仍可运行，会使用本地模板输出，方便先验证工作流。
 
@@ -40,10 +40,10 @@ Copy-Item .env.example .env
 
 ## Agent 员工
 
-| 职位       | 员工   | 负责内容                                                      |
-| ---------- | ------ | ------------------------------------------------------------- |
+| 职位 | 员工 | 负责内容 |
+| ---- | ---- | -------- |
 
-| 热点监控员 | 赵爽   | 搜集 AI 圈、B站/社媒热点，沉淀选题                            |
+| 热点监控员 | 赵爽   | 搜集 AI 圈、社媒和开源社区热点，沉淀选题                     |
 | 爆款分析师 | 星辰   | 分析传播钩子、争议点和内容结构                                |
 | 文案助手   | 洛一   | 生成 90-120 秒短视频脚本                                      |
 | 视频剪辑员 | 小李   | 使用 MoneyPrinterTurbo 生成配音、素材、字幕、背景音乐与短视频 |
@@ -87,8 +87,8 @@ python -m uv run --no-project --python 3.11 python mpt_agent.py --subject "视�
 
 ```text
 AI_API_KEY=<AI 服务 API Key>
-AI_BASE_URL=https://api.wlai.vip/v1
-AI_MODEL=
+AI_BASE_URL=https://api.openlux.ai/v1
+AI_MODEL=gpt-5.6-luna
 MPT_PEXELS_API_KEY=<Pexels API Key>
 ```
 
@@ -103,7 +103,6 @@ MPT_PEXELS_API_KEY=<Pexels API Key>
 
 | 岗位       | Skill                       | 安装路径                                                             | 来源与状态                                                                                                |
 | ---------- | --------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| 热点监控员 | `bilibili-search`         | `workspaces/agents/hotspot_monitor/skills/bilibili-search/`        | ClawHub/Volces，owner`excalibursssooo`，version `0.1.0`，MIT-0                                        |
 | 运营大师   | `newmedia-operations`     | `workspaces/agents/operator/skills/newmedia-operations/`           | ClawHub/Volces，owner`swcxy12315`，version `1.0.0`，上游未声明许可证                                  |
 | 产品经理   | `Product-Manager-Skills`  | `workspaces/agents/product_manager/skills/Product-Manager-Skills/` | [deanpeters/Product-Manager-Skills](https://github.com/deanpeters/Product-Manager-Skills)，CC BY-NC-SA 4.0 |
 | 心理疗愈师 | `mental-health-assistant` | `workspaces/agents/healer/skills/mental-health-assistant/`         | ClawHub/Volces，owner`ttoooong`，version `2.1.0`，上游未声明许可证                                    |
@@ -144,9 +143,10 @@ scripts/
 - [作者博客：Qclaw 超简单 AI 一人公司教程](https://guantou.site/archives/qclawchao-jian-dan-aiyi-ren-gong-si-jiao-cheng-re-dian-xuan-ti-jiao-ben-jian-ji-quan-bao-liao)
 - [harry0703/MoneyPrinterTurbo](https://github.com/harry0703/MoneyPrinterTurbo)：剪辑员已安装其官方 Agent Skill，见 `workspaces/agents/video_editor/skills/moneyprinterturbo-video/`
 - [deanpeters/Product-Manager-Skills](https://github.com/deanpeters/Product-Manager-Skills)：产品经理 Skill
-- ClawHub/Volces Skill：`bilibili-search`、`newmedia-operations`、`mental-health-assistant`
+- ClawHub/Volces Skill：`newmedia-operations`、`mental-health-assistant`
 
 本仓库没有复制 MoneyPrinterTurbo 主项目源码；当前仅保存其官方 Agent Skill、helper、README 备份与 MIT License。helper 在真实生成视频时会通过 `uv` 安装和调用 MoneyPrinterTurbo。
+
 ## Local deployment
 
 Requirements: Windows PowerShell, Python 3.11+, Node.js 18+, and `uv`.

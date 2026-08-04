@@ -31,6 +31,13 @@ class ApiStatus(BaseModel):
     base_url: str
     model: str
     mode: Literal["live", "local-template"]
+    model_available: bool = False
+    diagnostic: str | None = None
+
+
+class TimeoutSettings(BaseModel):
+    news_fetch_timeout_seconds: int = Field(default=90, ge=0)
+    model_timeout_seconds: int = Field(default=30, ge=0)
 
 
 class TopicSeed(BaseModel):
@@ -84,6 +91,9 @@ class WorkflowRun(BaseModel):
     created_at: datetime
     completed_at: datetime | None = None
     error: str | None = None
+    current_stage: str | None = None
+    resumable: bool = False
+    source_status: dict[str, str] = Field(default_factory=dict)
 
 
 class RunWorkflowRequest(BaseModel):

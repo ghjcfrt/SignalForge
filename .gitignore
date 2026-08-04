@@ -12,9 +12,9 @@ frontend/dist/
 frontend/*.tsbuildinfo
 frontend/vite.config.js
 frontend/vite.config.d.ts
-
 .pnpm-store/
 
 workspaces/runs/
+workspaces/runtime-settings.json
 workspaces/*.png
 *.log

@@ -15,14 +15,14 @@ AGENTS: list[Agent] = [
         id="hotspot_monitor",
         name="赵爽",
         title="热点监控员",
-        role="抓取 AI 圈、B站、技术社区和创作者生态热点，辅助选题。",
+        role="抓取 AI 圈、技术社区和创作者生态热点，辅助选题。",
         focus="热点舆情、搜索线索、选题初筛",
         workspace=_workspace("hotspot_monitor"),
         skills=[
             Skill(
-                name="bilibili-search",
-                source="ClawHub/Volces: excalibursssooo/bilibili-search@0.1.0 (MIT-0)",
-                description="抓取 B 站公开搜索、UP 主空间、视频详情、评论和弹幕数据，用于热点选题。",
+                name="news-aggregator-skill",
+                source="https://github.com/cclank/news-aggregator-skill (MIT)",
+                description="抓取微博、BBC、Reuters fallback、华尔街见闻及其他公开 RSS/新闻源，用于多源热点监控。",
             )
         ],
     ),

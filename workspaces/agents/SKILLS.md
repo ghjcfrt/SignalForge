@@ -4,7 +4,6 @@
 
 | 员工 | 岗位 | Skill | 安装路径 | 来源 | 许可证 / 状态 |
 |---|---|---|---|---|---|
-| 赵爽 | 热点监控员 | `bilibili-search` | `workspaces/agents/hotspot_monitor/skills/bilibili-search/` | ClawHub/Volces，owner `excalibursssooo`，version `0.1.0` | MIT-0，已安装 |
 | 小李 | 视频剪辑员 | `moneyprinterturbo-video` | `workspaces/agents/video_editor/skills/moneyprinterturbo-video/` | `https://github.com/harry0703/MoneyPrinterTurbo/tree/main/docs/skill` | MIT，默认剪辑链路 |
 | 星辰 | 爆款分析师 | `space-xhs-hotspot` | `workspaces/agents/viral_analyst/skills/creator-buddy/xhs-Skills/space-xhs-hotspot/` | `https://github.com/SpaceZephyr/creator-buddy` | MIT，公开热点分析；至少两个独立来源交叉验证后才能发布 |
 | 尤道理 | 运营大师 | `newmedia-operations` | `workspaces/agents/operator/skills/newmedia-operations/` | ClawHub/Volces，owner `swcxy12315`，version `1.0.0` | 上游未声明许可证，已安装 |

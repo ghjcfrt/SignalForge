@@ -374,6 +374,34 @@ button {
   line-height: 1.45;
 }
 
+.pipeline-error {
+  margin: 14px 18px 0;
+  padding: 11px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  border: 1px solid rgba(233, 76, 61, 0.25);
+  border-radius: 8px;
+  color: #9c3d31;
+  background: #fff1ee;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.pipeline-error > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.pipeline-error strong {
+  font-size: 13px;
+}
+
+.pipeline-error span {
+  overflow-wrap: anywhere;
+}
+
 .run-state {
   min-width: 86px;
   height: 28px;
@@ -1190,6 +1218,96 @@ button {
   white-space: nowrap;
 }
 
+.timeout-grid {
+  padding: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.timeout-field {
+  min-width: 0;
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.timeout-label {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.timeout-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.timeout-input-row input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: #fbfdfb;
+}
+
+.timeout-input-row input:focus {
+  outline: 2px solid rgba(15, 159, 134, 0.2);
+  border-color: var(--accent);
+}
+
+.timeout-input-row input:disabled {
+  cursor: not-allowed;
+  color: var(--muted);
+  background: var(--surface-2);
+}
+
+.timeout-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.timeout-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  color: #48514d;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.timeout-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.timeout-actions {
+  min-height: 66px;
+  padding: 0 14px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.timeout-message {
+  color: #0b6f60;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .service-panel {
   overflow: hidden;
 }
@@ -1427,6 +1545,7 @@ button {
   .mpt-actions,
   .agent-detail-grid,
   .settings-list,
+  .timeout-grid,
   .studio-grid,
   .right-stack,
   .settings-strip {
