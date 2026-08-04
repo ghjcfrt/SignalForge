@@ -1,156 +1,126 @@
-# 热讯工坊
+# 热讯工坊（SignalForge）
 
-热讯工坊是一个从 0 搭建的“一人公司”项目：你是老板，多个 AI 员工各司其职，围绕“热点监控 -> 爆款分析 -> 脚本撰写 -> 视频剪辑方案 -> 运营发布”完成短视频内容生产。
+热讯工坊是一个本地运行的 AI 内容生产调度台，把“热点线索 → 事实核查 → 爆款分析 → 脚本 → 剪辑方案 → 运营发布”拆成多个岗位 Agent。项目适合用来验证一人公司式内容生产流程、Agent 分工和结构化产物沉淀。
 
-项目不依赖 Qclaw。后端使用 Python + FastAPI，Python 依赖通过 `uv` 安装到 `.venv` 虚拟环境；前端使用 React + Vite。
+当前项目是可运行原型，不承诺已经具备生产环境级别的新闻准确率、视频成片成功率或运营效果。
 
-## AI 接口
+## 当前能力
 
-后端默认使用 OpenAI 兼容接口：
+- 总览：执行完整的热视频工作流，查看阶段状态、热点和岗位产物。
+- 热点雷达：调用 `news-aggregator-skill` 抓取公开来源，并要求模型基于来源整理选题。
+- 真实性门禁：至少两个不同域名的独立来源交叉验证后，热点才会进入后续生产阶段；否则任务停止并保留失败检查点。
+- 脚本工坊：单独生成指定主题的短视频脚本，默认目标时长为 30–240 秒。
+- 股票分析：调用 `stock-analysis` Skill 生成股票/财经分析，可选接入 Tushare、Tavily、SerpApi。
+- 剪辑队列：生成 MoneyPrinterTurbo 剪辑方案，并可调用其 helper 尝试真实成片。
+- 互动回复、员工、设置：展示岗位信息、评论处理样例、AI 状态、超时设置、项目导入导出和本地服务控制。
+- 无 Key 回退：没有 `AI_API_KEY` 时仍可启动并验证本地模板、接口和前端流程；需要实时热点和在线模型时必须配置 Key。
+- 任务持久化：运行状态会写入 `workspaces/runs/<run_id>/run-state.json`，服务重启后会尝试恢复已保存的任务。
 
-- AI 密钥环境变量：`AI_API_KEY`
-- Base URL：`https://api.openlux.ai/v1`
-- Model：在线模式必填 `AI_MODEL`；OpenLux 示例使用 `gpt-5.6-luna`
+## 快速开始（Windows）
 
-没有配置 key 时，项目仍可运行，会使用本地模板输出，方便先验证工作流。
-
-## 快速启动
-
-PowerShell：
+要求：Windows PowerShell、Python 3.11+、Node.js 18+ 和 `uv`。如果系统没有 `uv`，项目脚本也会尝试使用 `python -m uv` 或 `py -m uv`。
 
 ```powershell
 Copy-Item .env.example .env
-# 编辑 .env，填入 AI_API_KEY
-
-.\scripts\setup.ps1
+# 按需编辑 .env；在线模式至少填写 AI_API_KEY 和 AI_MODEL
+.
+\scripts\setup.ps1
 .\start.ps1
 ```
 
-另开一个 PowerShell：
+`start.ps1` 会启动前后端并打开浏览器。也可以分别运行：
 
 ```powershell
- （无需再单独启动前端，`start.ps1` 会自动启动前后端。）
+.\scripts\dev-backend.ps1
+.\scripts\dev-frontend.ps1
 ```
 
 默认地址：
 
 - 前端：http://127.0.0.1:5173
 - 后端：http://127.0.0.1:8017
-- API 文档：http://127.0.0.1:8017/docs
+- Swagger API 文档：http://127.0.0.1:8017/docs
+- 健康检查：http://127.0.0.1:8017/api/health
 
-## Agent 员工
+## 环境变量
 
-| 职位 | 员工 | 负责内容 |
-| ---- | ---- | -------- |
+| 变量 | 必需 | 说明 |
+| --- | --- | --- |
+| `AI_API_KEY` | 否 | OpenAI 兼容接口密钥；为空时使用本地模板 |
+| `AI_BASE_URL` | 否 | 默认 `https://api.openlux.ai/v1` |
+| `AI_MODEL` | 在线模式必需 | 在线模型名称，例如 `gpt-5.6-luna` |
+| `MPT_PEXELS_API_KEY` | 成片时可选 | MoneyPrinterTurbo 素材服务 |
+| `BACKEND_PORT` | 否 | 默认 `8017` |
+| `NEWS_FETCH_TIMEOUT_SECONDS` | 否 | 热点抓取超时；`0` 表示不限时，默认 `90` |
+| `MODEL_TIMEOUT_SECONDS` | 否 | 模型调用超时；`0` 表示不限时，默认 `30` |
+| `TUSHARE_TOKEN` | 否 | 股票数据增强 |
+| `TAVILY_API_KEY` / `SERPAPI_KEY` | 否 | 股票新闻增强 |
 
-| 热点监控员 | 赵爽   | 搜集 AI 圈、社媒和开源社区热点，沉淀选题                     |
-| 爆款分析师 | 星辰   | 分析传播钩子、争议点和内容结构                                |
-| 文案助手   | 洛一   | 生成 90-120 秒短视频脚本                                      |
-| 视频剪辑员 | 小李   | 使用 MoneyPrinterTurbo 生成配音、素材、字幕、背景音乐与短视频 |
-| 运营大师   | 尤道理 | 生成标题、封面文案、发布时间和互动策略                        |
-| 产品经理   | 方舟   | 做产品调研、竞品和需求总结                                    |
-| 程序员     | 阿栈   | 配合产品经理实现工具和自动化                                  |
-| 股票助手   | 林量   | 查看股票相关信息和市场摘要                                    |
-| 心理疗愈师 | 周周   | 情感话题沟通疏导                                              |
+超时也可以在前端“设置”页修改，保存到 `workspaces/runtime-settings.json`。
 
-每个 Agent 都有独立目录：`workspaces/agents/<agent_id>`。每次工作流运行会写入 `workspaces/runs/<run_id>/<agent_id>`，避免不同员工“串台”。
+## API 一览
 
-## 剪辑 Skill：MoneyPrinterTurbo
+| API | 用途 |
+| --- | --- |
+| `GET /api/health`、`GET /api/status` | 健康检查和 AI 模式诊断 |
+| `GET /api/agents` | 获取岗位与 Skill 信息 |
+| `POST /api/topics/scout` | 扫描热点线索 |
+| `POST /api/scripts/generate` | 单独生成脚本 |
+| `POST /api/stocks/analyze` | 股票分析 |
+| `POST /api/workflows/hot-video` | 执行完整工作流 |
+| `GET /api/workflows`、`GET /api/workflows/{id}` | 查询任务 |
+| `POST /api/workflows/{id}/resume` | 从失败检查点继续 |
+| `GET/POST /api/workflows/{id}/export`、`POST /api/workflows/import` | 项目导出与导入 |
+| `GET/POST /api/video/moneyprinterturbo/*` | 检查并调用剪辑工具 |
 
-小李的剪辑 Skill 已安装到：
+## Agent 与 Skill
 
-```text
-workspaces/agents/video_editor/skills/moneyprinterturbo-video/
-```
+核心流水线岗位是热点监控员赵爽、爆款分析师星辰、文案助手洛一、视频剪辑员小李和运营大师尤道理。产品经理方舟、程序员阿栈、股票助手林量和心理疗愈师周周作为扩展岗位展示或提供专项能力。
 
-该目录包含：
+岗位工作区位于 `workspaces/agents/<agent_id>`；每次任务的产物位于 `workspaces/runs/<run_id>/<agent_id>/`，老板摘要位于 `boss/run-summary.json`。
 
-- `SKILL.md`：MoneyPrinterTurbo 官方 Agent Skill
-- `mpt_agent.py`：官方 helper，用于安装/调用 MoneyPrinterTurbo CLI
-- `README.MoneyPrinterTurbo.md`：上游 README 备份
-- `LICENSE.MoneyPrinterTurbo`：上游 MIT License
+已纳入仓库的专项能力包括：
 
-出处：
+- `hotspot_monitor`：`news-aggregator-skill`
+- `stock_assistant`：`stock-analysis`
+- `video_editor`：MoneyPrinterTurbo 官方 Agent Skill
+- `operator`：`newmedia-operations`
+- `product_manager`：`Product-Manager-Skills`
+- `healer`：`mental-health-assistant`
 
-- 上游项目：[harry0703/MoneyPrinterTurbo](https://github.com/harry0703/MoneyPrinterTurbo)
-- 官方 Skill：[docs/skill/SKILL.md](https://github.com/harry0703/MoneyPrinterTurbo/tree/main/docs/skill)
-- License：MIT
-
-默认运行方式：
-
-```powershell
-Set-Location workspaces\agents\video_editor\skills\moneyprinterturbo-video
-python -m uv run --no-project --python 3.11 python mpt_agent.py --subject "视频主题或脚本"
-```
-
-真实成片需要配置：
-
-```text
-AI_API_KEY=<AI 服务 API Key>
-AI_BASE_URL=https://api.openlux.ai/v1
-AI_MODEL=gpt-5.6-luna
-MPT_PEXELS_API_KEY=<Pexels API Key>
-```
-
-后端也提供了接口：
-
-- `GET /api/video/moneyprinterturbo/status`
-- `POST /api/video/moneyprinterturbo/run`
-
-## 其它 Skill
-
-除 MoneyPrinterTurbo 外，其它岗位 Skill 已按员工独立 Workspace 安装。完整登记见 `workspaces/agents/SKILLS.md`。
-
-| 岗位       | Skill                       | 安装路径                                                             | 来源与状态                                                                                                |
-| ---------- | --------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| 运营大师   | `newmedia-operations`     | `workspaces/agents/operator/skills/newmedia-operations/`           | ClawHub/Volces，owner`swcxy12315`，version `1.0.0`，上游未声明许可证                                  |
-| 产品经理   | `Product-Manager-Skills`  | `workspaces/agents/product_manager/skills/Product-Manager-Skills/` | [deanpeters/Product-Manager-Skills](https://github.com/deanpeters/Product-Manager-Skills)，CC BY-NC-SA 4.0 |
-| 心理疗愈师 | `mental-health-assistant` | `workspaces/agents/healer/skills/mental-health-assistant/`         | ClawHub/Volces，owner`ttoooong`，version `2.1.0`，上游未声明许可证                                    |
-
-当前对外展示和默认剪辑链路只使用 MoneyPrinterTurbo。
-
-股票助手已安装 `stock-analysis`，接口为 `POST /api/stocks/analyze`；涉及财经、股票或股票新闻时使用该 Skill。可选配置 `TUSHARE_TOKEN`、`TAVILY_API_KEY`、`SERPAPI_KEY` 增强数据质量和新闻抓取。爆款分析师使用 `SpaceZephyr/creator-buddy` 的 `space-xhs-hotspot` 子 Skill；文案助手和程序员按设计不安装单独 Skill。
-
-新闻真实性边界：热点线索必须同时具备至少两个相互独立的来源、来源 URL、各自发布时间、对同一事实的交叉验证说明，并标记为 `verified`，才能进入后续爆款分析、脚本和发布流程。相同转载链、单一来源或只有模型推测的内容都不算多方验证；未满足条件时系统只展示“未核验线索”，并停止后续生产链路。
+Skill 来源、版本和许可证记录见 [`workspaces/agents/SKILLS.md`](workspaces/agents/SKILLS.md) 与 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。本仓库没有复制 MoneyPrinterTurbo 主项目源码。
 
 ## 项目结构
 
 ```text
-backend/
-  app/
-    main.py              FastAPI 入口
-    agents.py            AI 员工定义
-    config.py            环境配置
-    llm.py               OpenAI 兼容客户端
-    workflows.py         热点短视频工作流
-frontend/
-  src/
-    App.tsx              调度台主界面
-    api.ts               后端 API 封装
-    data.ts              UI 静态元数据
-    styles.css           视觉系统
-scripts/
-  setup.ps1              uv + npm 依赖安装
-  dev-backend.ps1        uv 虚拟环境中启动后端
-  dev-frontend.ps1       启动前端
+backend/app/             FastAPI、配置、Agent、工作流和外部工具适配
+frontend/src/            React/Vite 调度台
+scripts/                 安装、开发启动和检查脚本
+workspaces/agents/       按岗位隔离的 Skill 与工作区
+workspaces/runs/         任务状态和岗位产物
+pic/                     项目界面截图
+showboard.md             功能、实现边界和验证记录
+pyproject.toml           Python 依赖声明
+uv.lock                  uv 锁定依赖
 ```
 
-## 致谢
+## 检查与排障
 
-参考了作者“一人公司”的 Agent 分工思路，以及以下开源项目的方向：
+```powershell
+.\scripts\check.ps1
+uv lock --check
+```
 
-- [B站参考视频：BV1ZcDsBxEQe](https://www.bilibili.com/video/BV1ZcDsBxEQe/)
-- [作者博客：Qclaw 超简单 AI 一人公司教程](https://guantou.site/archives/qclawchao-jian-dan-aiyi-ren-gong-si-jiao-cheng-re-dian-xuan-ti-jiao-ben-jian-ji-quan-bao-liao)
-- [harry0703/MoneyPrinterTurbo](https://github.com/harry0703/MoneyPrinterTurbo)：剪辑员已安装其官方 Agent Skill，见 `workspaces/agents/video_editor/skills/moneyprinterturbo-video/`
-- [deanpeters/Product-Manager-Skills](https://github.com/deanpeters/Product-Manager-Skills)：产品经理 Skill
-- ClawHub/Volces Skill：`newmedia-operations`、`mental-health-assistant`
+如果端口已被其他程序占用，修改 `.env` 中的 `BACKEND_PORT`，并通过前端开发命令传入新的前端端口。设置页可查看项目服务是否运行，并执行后端启动、重启和关闭操作。
 
-本仓库没有复制 MoneyPrinterTurbo 主项目源码；当前仅保存其官方 Agent Skill、helper、README 备份与 MIT License。helper 在真实生成视频时会通过 `uv` 安装和调用 MoneyPrinterTurbo。
+## 已知边界
 
-## Local deployment
+- 真实热点依赖公开来源抓取；网络、来源格式或模型超时都会影响结果。
+- `verified` 只表示当前实现完成了来源结构和域名数量检查，不等于人工事实核查或编辑审核。
+- 工作流是本地单机原型，尚未提供数据库、账号权限、队列服务、并发治理和线上监控。
+- MoneyPrinterTurbo 真实成片还依赖其上游运行环境、模型和素材服务，生成失败时仍可保留剪辑方案。
+- 项目没有真实运营样本，因此不声称已经验证完播率、CTR、互动率、转化率或 ROI。
 
-Requirements: Windows PowerShell, Python 3.11+, Node.js 18+, and `uv`.
+## 许可与致谢
 
-For a fresh checkout, run `Copy-Item .env.example .env`, configure `.env` if needed, then run `.\scripts\setup.ps1` once. After installation, run `.\start.ps1` from the repository root to start both services and open the frontend automatically.
-
-Default endpoints: frontend `http://127.0.0.1:5173`, backend `http://127.0.0.1:8017`, API docs `http://127.0.0.1:8017/docs`.
+本项目许可证见 [`LICENSE`](LICENSE)。第三方 Skill 和上游项目按其各自许可证使用，详见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。项目参考了“一人公司”Agent 分工思路、MoneyPrinterTurbo、Product-Manager-Skills 及相关内容生产 Skill。
