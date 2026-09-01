@@ -5,6 +5,7 @@ import {
   Bot,
   CheckCircle2,
   CircleDot,
+  ChartNoAxesCombined,
   Copy,
   Cpu,
   ExternalLink,
@@ -15,6 +16,7 @@ import {
   MessageCircle,
   Power,
   Play,
+  Plus,
   RefreshCcw,
   RotateCcw,
   Search,
@@ -28,6 +30,9 @@ import {
 } from "lucide-react";
 import {
   fetchAgents,
+  fetchWorkflow,
+  fetchWorkflows,
+  cancelWorkflow,
   analyzeStocks,
   fetchMoneyPrinterTurboStatus,
   fetchStatus,
@@ -35,7 +40,9 @@ import {
   generateScript,
   restartBackend,
   runHotVideoWorkflow,
+  runAgent,
   resumeWorkflow,
+  stepWorkflow,
   runMoneyPrinterTurbo,
   scoutTopics,
   shutdownAll,
@@ -62,6 +69,7 @@ import type {
   ,StockAnalysisResult
   ,EngagementComment
   ,TimeoutSettings
+  ,ViralAnalysisConfig
 } from "./types";
 
 type ViewId = (typeof navItems)[number]["id"];
@@ -75,7 +83,14 @@ const defaultSeed: TopicSeed = {
 
 const defaultTimeoutSettings: TimeoutSettings = {
   news_fetch_timeout_seconds: 90,
-  model_timeout_seconds: 30
+  model_timeout_seconds: 30,
+  workflow_timeout_seconds: 300
+};
+
+const defaultViralAnalysis: ViralAnalysisConfig = {
+  source: "socialdatax",
+  enabled: true,
+  manual_content: ""
 };
 
 const statusText = {
@@ -85,6 +100,39 @@ const statusText = {
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
+}
+
+function readSaved<T>(key: string, fallback: T): T {
+  try {
+    const value = window.localStorage.getItem(key);
+    return value ? JSON.parse(value) as T : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function readSavedRun(): WorkflowRun | null {
+  const saved = readSaved<WorkflowRun | null>("signalforge.currentRun", null);
+  if (!saved || saved.status !== "running") return saved;
+  // A browser snapshot cannot prove that a server task is still alive.
+  // Treat an old running snapshot as resumable until the server refresh wins.
+  return {
+    ...saved,
+    status: "failed",
+    error: saved.error || "页面恢复了一个未完成任务，请继续重试",
+    resumable: true,
+    completed_at: null
+  };
+}
+
+function readViralAnalysis(): ViralAnalysisConfig {
+  const saved = readSaved<Partial<ViralAnalysisConfig>>("signalforge.viralAnalysis", {});
+  return {
+    ...defaultViralAnalysis,
+    ...saved,
+    enabled: saved.enabled !== false,
+    manual_content: saved.manual_content ?? ""
+  };
 }
 
 const viewMeta: Record<ViewId, { title: string; subtitle: string }> = {
@@ -112,15 +160,49 @@ const viewMeta: Record<ViewId, { title: string; subtitle: string }> = {
     title: "互动回复",
     subtitle: "把评论区、私信和内容反馈交给最合适的 AI 员工跟进"
   },
-  agents: {
-    title: "员工",
-    subtitle: "管理每个 Agent 的职责、技能和独立工作区。"
-  },
   settings: {
     title: "设置",
     subtitle: "检查模型、密钥变量、Base URL 和本地工作区约定。"
-  }
+  },
+  agent_hotspot_monitor: { title: "热点监控员", subtitle: "独立搜集、排序并核验热点候选。" },
+  agent_viral_analyst: { title: "爆款分析师", subtitle: "独立制定传播角度、结构和表达规则。" },
+  agent_copywriter: { title: "文案助手", subtitle: "独立生成短视频口播脚本。" },
+  agent_video_editor: { title: "视频剪辑员", subtitle: "独立生成剪辑、字幕和配音方案。" },
+  agent_operator: { title: "运营大师", subtitle: "独立生成发布、互动和复盘方案。" },
+  agent_product_manager: { title: "产品经理", subtitle: "独立完成需求拆解、调研和产品建议。" },
+  agent_programmer: { title: "程序员", subtitle: "独立完成自动化、接口和工程任务建议。" },
+  agent_stock_assistant: { title: "股票助手", subtitle: "独立处理股票和财经信息分析。" },
+  agent_healer: { title: "心理疗愈师", subtitle: "独立提供情绪支持和安全边界提示。" }
 };
+
+const employeeIds = [
+  "hotspot_monitor",
+  "viral_analyst",
+  "copywriter",
+  "video_editor",
+  "operator",
+  "product_manager",
+  "programmer",
+  "stock_assistant",
+  "healer"
+] as const;
+
+function employeeIdFromView(view: ViewId): string | null {
+  return view.startsWith("agent_") ? view.slice("agent_".length) : null;
+}
+
+function formatWorkflowError(run: WorkflowRun, fallback = "") {
+  let detail = run.error || fallback;
+  if (run.current_stage) {
+    const rawPrefix = `${run.current_stage}:`;
+    if (detail.startsWith(rawPrefix)) {
+      detail = `阶段：${run.current_stage}。\n${detail.slice(rawPrefix.length).trim()}`;
+    } else if (!detail.startsWith(`阶段：${run.current_stage}`)) {
+      detail = `阶段：${run.current_stage}。\n${detail}`;
+    }
+  }
+  return detail.replace(/来源状态：\s*/, "来源状态：\n").replace(/;\s+/g, "\n");
+}
 
 function ShellNav({
   activeView,
@@ -146,19 +228,22 @@ function ShellNav({
       </div>
 
       <nav className="nav-list" aria-label="主导航">
-        {navItems.map((item) => {
+        {navItems.map((item, index) => {
           const Icon = item.icon;
           return (
-            <button
-              className={cn("nav-item", activeView === item.id && "active")}
-              key={item.id}
-              onClick={() => onViewChange(item.id)}
-              type="button"
-              aria-current={activeView === item.id ? "page" : undefined}
-            >
-              <Icon size={18} />
-              <span>{item.label}</span>
-            </button>
+            <div key={item.id}>
+              {index === 1 && <div className="nav-section-label">流水线员工</div>}
+              {index === pipeline.length + 1 && <div className="nav-section-label">其他员工</div>}
+              <button
+                className={cn("nav-item", activeView === item.id && "active")}
+                onClick={() => onViewChange(item.id)}
+                type="button"
+                aria-current={activeView === item.id ? "page" : undefined}
+              >
+                <Icon size={18} />
+                <span>{item.label}</span>
+              </button>
+            </div>
           );
         })}
       </nav>
@@ -210,37 +295,54 @@ function TopBar({
   );
 }
 
-function PipelineBoard({ run, running }: { run: WorkflowRun | null; running: boolean }) {
+function PipelineBoard({ run, running, onNew, onStep, onCancel }: { run: WorkflowRun | null; running: boolean; onNew: () => void; onStep: () => void; onCancel: () => void }) {
   const completedIds = new Set(run?.outputs.map((output) => output.agent_id) ?? []);
+  const stageStatus = run?.stage_status ?? {};
+  const statusLabels = { pending: "待调度", running: "执行中", completed: "已产出", failed: "失败" };
 
   return (
     <section className="panel pipeline-panel">
       <div className="panel-heading">
         <div>
           <h2>内容生产流水线</h2>
-          <p>热点监控员选题 -&gt; 文案助手写脚本 -&gt; 剪辑员生成成片方案。</p>
+          <p>热点监控员选题 -&gt; 爆款分析师定结构 -&gt; 文案助手写脚本 -&gt; 剪辑员成片。</p>
         </div>
-        <span className={cn("run-state", run?.status === "completed" && "done")}>
-          {running ? "Running" : run?.status ?? "Ready"}
-        </span>
-      </div>
-      {run?.status === "failed" && run.error && (
-        <div className="pipeline-error" role="alert">
-          <AlertCircle size={17} />
-          <div>
-            <strong>流水线失败</strong>
-            <span>{run.current_stage ? `阶段：${run.current_stage}。` : ""}{run.error}</span>
+          <div className="pipeline-actions">
+            <span className={cn("run-state", run?.status === "completed" && "done")}>
+              {running ? "执行中" : run?.status === "paused" ? "已暂停" : run?.status === "queued" ? "待调度" : run?.status === "failed" ? "执行失败" : run?.status === "completed" ? "已完成" : "待开始"}
+            </span>
+            <button className="ghost-button compact" onClick={onNew} disabled={running} type="button">
+              <Plus size={15} />
+              <span>新任务</span>
+            </button>
+            {run && run.status !== "completed" && <button className="ghost-button compact" onClick={onStep} disabled={running} type="button">执行下一步</button>}
+            {running && <button className="danger-button compact" onClick={onCancel} type="button"><Square size={15} /><span>停止任务</span></button>}
           </div>
-        </div>
-      )}
+      </div>
+      {run?.logs?.length ? (
+        <details className="run-logs">
+          <summary>查看执行日志（{run.logs.length} 条）</summary>
+          <div className="run-log-list">
+            {run.logs.slice().reverse().map((entry, index) => (
+              <div className={cn("run-log-entry", entry.level === "error" && "error")} key={`${entry.timestamp}-${index}`}>
+                <time>{new Date(entry.timestamp).toLocaleTimeString()}</time>
+                <span>{entry.stage ? `[${entry.stage}] ` : ""}{entry.message}</span>
+                {entry.detail && <code>{entry.detail}</code>}
+              </div>
+            ))}
+          </div>
+          {run.log_file && <small className="log-path">日志文件：{run.log_file}</small>}
+        </details>
+      ) : null}
 
       <div className="pipeline-grid">
         {pipeline.map((stage, index) => {
           const Icon = roleIcons[stage.agentId] ?? Bot;
-          const done = completedIds.has(stage.agentId);
-          const active = running && index === 0;
+          const state = stageStatus[stage.agentId] ?? (completedIds.has(stage.agentId) ? "completed" : "pending");
+          const done = state === "completed";
+          const active = state === "running" || (running && index === 0 && !run);
           return (
-            <article className={cn("stage-card", done && "done", active && "active")} key={stage.agentId}>
+            <article className={cn("stage-card", done && "done", active && "active", state === "failed" && "failed")} key={stage.agentId}>
               <div className="stage-head">
                 <div className="stage-icon">
                   <Icon size={18} />
@@ -252,7 +354,7 @@ function PipelineBoard({ run, running }: { run: WorkflowRun | null; running: boo
               <p>{stage.description}</p>
               <div className="stage-foot">
                 {done ? <CheckCircle2 size={16} /> : <CircleDot size={16} />}
-                <span>{done ? "已产出" : "待调度"}</span>
+                <span>{statusLabels[state as keyof typeof statusLabels] ?? "待调度"}</span>
               </div>
             </article>
           );
@@ -278,7 +380,7 @@ function SeedPanel({
       <div className="panel-heading tight">
         <div>
           <h2>老板指令</h2>
-          <p>给热点监控员和文案助手的本轮方向。</p>
+          <p>给整条流水线的本轮方向；各员工的专属设置请在左侧员工页维护。</p>
         </div>
       </div>
       <label>
@@ -303,6 +405,10 @@ function SeedPanel({
           onChange={(event) => onChange({ ...seed, duration_seconds: Number(event.target.value) })}
         />
       </label>
+      <div className="settings-handoff">
+        <ChartNoAxesCombined size={16} />
+        <span>爆款分析师的开关、数据来源和分析依据已统一到左侧“爆款分析师”页面。</span>
+      </div>
       <button className="ghost-button" onClick={onScript} disabled={scriptBusy}>
         {scriptBusy ? <Loader2 className="spin" size={17} /> : <Wand2 size={17} />}
         <span>{scriptBusy ? "生成中" : "只生成脚本"}</span>
@@ -312,16 +418,23 @@ function SeedPanel({
 }
 
 function AgentRoster({ agents }: { agents: Agent[] }) {
+  const pipelineIds = new Set(pipeline.map((stage) => stage.agentId));
+  const groups = [
+    { title: "流水线员工", hint: "参与热点到成片的固定流程", items: agents.filter((agent) => pipelineIds.has(agent.id)) },
+    { title: "其他员工", hint: "按需独立调用，不自动加入流水线", items: agents.filter((agent) => !pipelineIds.has(agent.id)) }
+  ];
   return (
     <section className="panel roster-panel">
       <div className="panel-heading tight">
         <div>
-          <h2>AI 员工</h2>
-          <p>每个员工都有清晰职责和专属技能。</p>
+          <h2>AI 员工分工</h2>
+          <p>流水线员工按阶段协作；其他员工只在需要时独立调用。</p>
         </div>
       </div>
+      {groups.map((group) => <div className="roster-group" key={group.title}>
+        <div className="roster-group-heading"><strong>{group.title}</strong><span>{group.hint}</span></div>
       <div className="roster-list">
-        {agents.map((agent) => {
+        {group.items.map((agent) => {
           const Icon = roleIcons[agent.id] ?? Bot;
           return (
             <article className="agent-row" key={agent.id}>
@@ -335,11 +448,11 @@ function AgentRoster({ agents }: { agents: Agent[] }) {
                 </div>
                 <p>{agent.focus}</p>
               </div>
-              <span className="agent-dot" aria-label={agent.status} />
+              <span className={cn("agent-dot", `status-${agent.status}`)} aria-label={agent.status} />
             </article>
           );
         })}
-      </div>
+      </div></div>)}
     </section>
   );
 }
@@ -364,6 +477,9 @@ function TopicList({ run, topics }: { run?: WorkflowRun | null; topics?: Topic[]
             <h3>{topic.title}</h3>
             <p>{topic.angle}</p>
             <small>{topic.source_hint}</small>
+            <small className={cn("verification-badge", topic.verification_status === "verified" && "verified")}>
+              {topic.verification_status === "verified" ? "已通过独立来源核验" : "待完成独立来源核验"}
+            </small>
           </article>
         ))}
         {!items.length && (
@@ -413,7 +529,7 @@ function SettingsStrip({ status }: { status: ApiStatus | null }) {
     <section className="settings-strip">
       <div>
         <span>Key Path</span>
-        <strong>AI_API_KEY</strong>
+        <strong>{status?.key_preview ?? "未配置"}</strong>
       </div>
       <div>
         <span>Base URL</span>
@@ -488,7 +604,12 @@ function ScriptStudioView({
 
   return (
     <div className="studio-grid">
-      <SeedPanel seed={seed} onChange={onChange} onScript={onScript} scriptBusy={scriptBusy} />
+      <SeedPanel
+        seed={seed}
+        onChange={onChange}
+        onScript={onScript}
+        scriptBusy={scriptBusy}
+      />
       <OutputList outputs={scriptOutputs} />
     </div>
   );
@@ -557,7 +678,7 @@ function EditingQueueView({ outputs, seed }: { outputs: AgentOutput[]; seed: Top
             </div>
           </div>
         )}
-        <div className="mpt-actions">
+        <div className="project-file-actions">
           <button className="primary-button" onClick={handleMptRun} disabled={mptRunning || !mptStatus?.installed} type="button">
             {mptRunning ? <Loader2 className="spin" size={18} /> : <Video size={18} />}
             <span>{mptRunning ? "成片中" : "用 MoneyPrinterTurbo 成片"}</span>
@@ -646,6 +767,98 @@ function AgentsView({ agents }: { agents: Agent[] }) {
         })}
       </div>
     </section>
+  );
+}
+
+function EmployeeWorkbench({
+  agent,
+  seed,
+  viralAnalysis,
+  onSeedChange,
+  onViralAnalysisChange,
+  onRun,
+  busy,
+  output
+}: {
+  agent: Agent;
+  seed: TopicSeed;
+  viralAnalysis: ViralAnalysisConfig;
+  onSeedChange: (seed: TopicSeed) => void;
+  onViralAnalysisChange: (config: ViralAnalysisConfig) => void;
+  onRun: (prompt: string, settings: Record<string, unknown>) => void;
+  busy: boolean;
+  output: AgentOutput | null;
+}) {
+  const [prompt, setPrompt] = useState("");
+  const Icon = roleIcons[agent.id] ?? Bot;
+  const isViral = agent.id === "viral_analyst";
+  const isWriter = agent.id === "copywriter";
+  const isHotspot = agent.id === "hotspot_monitor";
+
+  function submit() {
+    onRun(prompt, {
+      domain: seed.domain,
+      audience: seed.audience,
+      duration_seconds: seed.duration_seconds,
+      topic: seed.brief,
+      angle: seed.domain,
+      source: viralAnalysis.source
+      ,manual_content: viralAnalysis.manual_content
+      ,stocks: seed.brief
+    });
+  }
+
+  return (
+    <div className={cn("employee-workbench", isViral && "viral-workbench")}>
+      <section className="panel employee-hero">
+        <div className="stage-head">
+          <div className="stage-icon"><Icon size={20} /></div>
+          <span>{agent.name} · {agent.title}</span>
+        </div>
+        <h2>{agent.title}独立工作台</h2>
+        <p>{agent.role}</p>
+      </section>
+      <div className="employee-work-grid">
+        <section className="panel employee-settings">
+          <div className="panel-heading tight"><div><h2>调用设置</h2><p>只调用当前员工，不启动整条流水线。</p></div></div>
+          {isHotspot && <>
+            <label><span>领域</span><input value={seed.domain} onChange={(event) => onSeedChange({ ...seed, domain: event.target.value })} /></label>
+            <label><span>受众</span><input value={seed.audience} onChange={(event) => onSeedChange({ ...seed, audience: event.target.value })} /></label>
+          </>}
+          {isWriter && <>
+            <label><span>主题</span><textarea value={seed.brief} onChange={(event) => onSeedChange({ ...seed, brief: event.target.value })} /></label>
+            <label><span>时长（秒）</span><input type="number" min={30} max={240} value={seed.duration_seconds} onChange={(event) => onSeedChange({ ...seed, duration_seconds: Number(event.target.value) })} /></label>
+          </>}
+          {agent.id === "video_editor" && <>
+            <label><span>视频画幅</span><select className="workbench-select" defaultValue="vertical"><option value="vertical">竖版 1080×1920</option><option value="horizontal">横版 1920×1080</option></select></label>
+            <label><span>剪辑要求</span><textarea placeholder="例如：突出开场钩子，字幕每 12-16 字断行" /></label>
+          </>}
+          {agent.id === "operator" && <>
+            <label><span>发布平台</span><select className="workbench-select" defaultValue="douyin"><option value="douyin">抖音</option><option value="xiaohongshu">小红书</option><option value="bilibili">B 站</option><option value="wechat">视频号</option></select></label>
+            <label><span>运营目标</span><input defaultValue="提升完播率、收藏率和评论质量" /></label>
+          </>}
+          {agent.id === "product_manager" && <label><span>分析类型</span><select className="workbench-select" defaultValue="需求拆解"><option>需求拆解</option><option>竞品分析</option><option>产品路线图</option></select></label>}
+          {agent.id === "programmer" && <label><span>技术栈 / 输出形式</span><input defaultValue="Python、FastAPI、React；输出实施方案" /></label>}
+          {isViral && <>
+            <label className="switch-line switch-control">
+              <input type="checkbox" checked={viralAnalysis.enabled} onChange={(event) => onViralAnalysisChange({ ...viralAnalysis, enabled: event.target.checked })} />
+              <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
+              <span className="switch-copy"><strong>{viralAnalysis.enabled ? "已启用爆款分析师" : "已关闭爆款分析师"}</strong><small>{viralAnalysis.enabled ? "流水线会执行这一阶段" : "流水线会跳过这一阶段"}</small></span>
+            </label>
+            <div className="segmented-control"><button className={cn("segment-button", viralAnalysis.source === "socialdatax" && "selected")} onClick={() => onViralAnalysisChange({ ...viralAnalysis, source: "socialdatax" })} type="button">SocialDataX</button><button className={cn("segment-button", viralAnalysis.source === "manual" && "selected")} onClick={() => onViralAnalysisChange({ ...viralAnalysis, source: "manual" })} type="button">手写分析</button></div>
+            <small className="field-hint">此处设置会同步到总览工作流；SocialDataX 只用于爆款样本分析，不是热点新闻源。</small>
+            {viralAnalysis.source === "manual" && <textarea className="manual-analysis-input" value={viralAnalysis.manual_content} onChange={(event) => onViralAnalysisChange({ ...viralAnalysis, manual_content: event.target.value })} placeholder="填写角度、观点、结构和规则" />}
+          </>}
+          {agent.id === "stock_assistant" && <label><span>股票代码或名称</span><input value={seed.brief} onChange={(event) => onSeedChange({ ...seed, brief: event.target.value })} placeholder="600519, TSLA" /></label>}
+          <label><span>本次任务</span><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={isHotspot ? "例如：找今天影响普通创作者的 AI 行业热点" : "描述这次要让员工完成什么"} /></label>
+          <button className="primary-button" type="button" onClick={submit} disabled={busy}>{busy ? <Loader2 className="spin" size={17} /> : <Play size={17} />}<span>{busy ? "执行中" : `调用${agent.title}`}</span></button>
+        </section>
+        <section className="panel employee-output">
+          <div className="panel-heading tight"><div><h2>独立产物</h2><p>结果会保存到本次独立调用记录。</p></div></div>
+          {output ? <><small>{output.artifact_path}</small><pre>{output.content}</pre></> : <div className="empty-state"><Copy size={20} /><span>还没有调用结果。</span></div>}
+        </section>
+      </div>
+    </div>
   );
 }
 
@@ -857,7 +1070,8 @@ function SettingsView({ status, currentRun, onImport, onBackendStateChange }: { 
     setTimeoutSettings(next);
     setTimeoutDraft({
       news_fetch_timeout_seconds: next.news_fetch_timeout_seconds || defaultTimeoutSettings.news_fetch_timeout_seconds,
-      model_timeout_seconds: next.model_timeout_seconds || defaultTimeoutSettings.model_timeout_seconds
+      model_timeout_seconds: next.model_timeout_seconds || defaultTimeoutSettings.model_timeout_seconds,
+      workflow_timeout_seconds: next.workflow_timeout_seconds || defaultTimeoutSettings.workflow_timeout_seconds
     });
     setUnlimitedTimeouts({
       news: next.news_fetch_timeout_seconds === 0,
@@ -888,7 +1102,8 @@ function SettingsView({ status, currentRun, onImport, onBackendStateChange }: { 
     try {
       const saved = await updateTimeoutSettings({
         news_fetch_timeout_seconds: unlimitedTimeouts.news ? 0 : timeoutDraft.news_fetch_timeout_seconds,
-        model_timeout_seconds: unlimitedTimeouts.model ? 0 : timeoutDraft.model_timeout_seconds
+        model_timeout_seconds: unlimitedTimeouts.model ? 0 : timeoutDraft.model_timeout_seconds,
+        workflow_timeout_seconds: timeoutDraft.workflow_timeout_seconds
       });
       applyTimeoutSettings(saved);
       setTimeoutMessage("热点扫描超时设置已保存");
@@ -986,14 +1201,14 @@ function SettingsView({ status, currentRun, onImport, onBackendStateChange }: { 
         <div className="panel-heading tight">
           <div>
             <h2>运行配置</h2>
-            <p>后端读取本地环境变量，不会把真实密钥写入前端。</p>
+            <p>仅显示已配置密钥的首尾字符，中间内容始终打码。</p>
           </div>
         </div>
         <div className="settings-list">
           <div>
             <KeyRound size={18} />
             <span>Key Path</span>
-            <strong>AI_API_KEY</strong>
+            <strong>{status?.key_preview ?? "未配置"}</strong>
           </div>
           <div>
             <ExternalLink size={18} />
@@ -1053,6 +1268,22 @@ function SettingsView({ status, currentRun, onImport, onBackendStateChange }: { 
               />
               <span>不限时</span>
             </span>
+          </label>
+          <label className="timeout-field">
+            <span className="timeout-label">工作流总时限</span>
+            <div className="timeout-input-row">
+              <input
+                type="number"
+                min="1"
+                max="86400"
+                step="1"
+                value={timeoutDraft.workflow_timeout_seconds}
+                disabled={timeoutSettings === null}
+                onChange={(event) => updateTimeoutDraft("workflow_timeout_seconds", event.target.value)}
+              />
+              <span>秒</span>
+            </div>
+            <span className="timeout-hint">超时后保留检查点，可继续执行</span>
           </label>
           <label className="timeout-field">
             <span className="timeout-label">模型整理</span>
@@ -1131,7 +1362,10 @@ function OverviewView({
   handleScript,
   scriptBusy,
   agents,
-  outputs
+  outputs,
+  onNew,
+  onStep,
+  onCancel
 }: {
   run: WorkflowRun | null;
   running: boolean;
@@ -1141,16 +1375,24 @@ function OverviewView({
   scriptBusy: boolean;
   agents: Agent[];
   outputs: AgentOutput[];
+  onNew: () => void;
+  onStep: () => void;
+  onCancel: () => void;
 }) {
   return (
     <div className="content-grid">
       <div className="left-stack">
-        <PipelineBoard run={run} running={running} />
+        <PipelineBoard run={run} running={running} onNew={onNew} onStep={onStep} onCancel={onCancel} />
         <TopicList run={run} />
         <OutputList outputs={outputs} />
       </div>
       <div className="right-stack">
-        <SeedPanel seed={seed} onChange={setSeed} onScript={handleScript} scriptBusy={scriptBusy} />
+        <SeedPanel
+          seed={seed}
+          onChange={setSeed}
+          onScript={handleScript}
+          scriptBusy={scriptBusy}
+        />
         <AgentRoster agents={agents} />
       </div>
     </div>
@@ -1161,8 +1403,9 @@ export default function App() {
   const [activeView, setActiveView] = useState<ViewId>("overview");
   const [status, setStatus] = useState<ApiStatus | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [seed, setSeed] = useState<TopicSeed>(defaultSeed);
-  const [run, setRun] = useState<WorkflowRun | null>(null);
+  const [seed, setSeed] = useState<TopicSeed>(() => readSaved("signalforge.seed", defaultSeed));
+  const [viralAnalysis, setViralAnalysis] = useState<ViralAnalysisConfig>(readViralAnalysis);
+  const [run, setRun] = useState<WorkflowRun | null>(readSavedRun);
   const [radarTopics, setRadarTopics] = useState<Topic[]>([]);
   const [extraOutputs, setExtraOutputs] = useState<AgentOutput[]>([]);
   const [running, setRunning] = useState(false);
@@ -1170,6 +1413,8 @@ export default function App() {
   const [closing, setClosing] = useState(false);
   const [shutdownComplete, setShutdownComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agentBusy, setAgentBusy] = useState(false);
+  const [agentOutputs, setAgentOutputs] = useState<Record<string, AgentOutput | null>>({});
 
   const outputs = useMemo(() => {
     return [...extraOutputs, ...(run?.outputs ?? [])];
@@ -1192,17 +1437,68 @@ export default function App() {
 
   useEffect(() => {
     refreshBackendData();
+    fetchWorkflows().then((items) => {
+      if (items.length) setRun(items[0]);
+    }).catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("signalforge.seed", JSON.stringify(seed));
+  }, [seed]);
+
+  useEffect(() => {
+    window.localStorage.setItem("signalforge.viralAnalysis", JSON.stringify(viralAnalysis));
+  }, [viralAnalysis]);
+
+  useEffect(() => {
+    if (run) window.localStorage.setItem("signalforge.currentRun", JSON.stringify(run));
+  }, [run]);
+
+  useEffect(() => {
+    if (run?.status === "failed" && run.error) {
+      setError(formatWorkflowError(run));
+    }
+  }, [run?.status, run?.error, run?.current_stage]);
+
+  async function waitForRun(initial: WorkflowRun): Promise<WorkflowRun> {
+    let current = initial;
+    setRun(current);
+    while (current.status === "queued" || current.status === "running") {
+      await new Promise((resolve) => window.setTimeout(resolve, 700));
+      current = await fetchWorkflow(current.id);
+      setRun(current);
+    }
+    return current;
+  }
+
+  function showRunError(result: WorkflowRun, fallback: string) {
+    if (result.status === "failed") {
+      setError(formatWorkflowError(result, fallback));
+    }
+  }
+
+  async function handleSingleAgent(agentId: string, prompt: string, settings: Record<string, unknown>) {
+    setAgentBusy(true);
+    setError(null);
+    try {
+      const output = await runAgent(agentId, { prompt, settings });
+      setAgentOutputs((current) => ({ ...current, [agentId]: output }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `${agentId} 执行失败`);
+    } finally {
+      setAgentBusy(false);
+    }
+  }
 
   async function handleRun() {
     setRunning(true);
     setError(null);
     try {
-      const result = await runHotVideoWorkflow(seed);
-      setRun(result);
-      if (result.status === "failed") {
-        setError(`${result.current_stage ? `阶段：${result.current_stage}。` : ""}${result.error || "流水线失败，但服务端没有提供错误详情"}`);
-      }
+      const initial = run && (run.status === "queued" || run.status === "paused" || (run.status === "failed" && run.resumable))
+        ? await resumeWorkflow(run.id)
+        : await runHotVideoWorkflow(seed, "auto", viralAnalysis);
+      const result = await waitForRun(initial);
+      showRunError(result, "流水线失败，但服务端没有提供错误详情");
     } catch (err) {
       setError(err instanceof Error ? err.message : "工作流运行失败");
     } finally {
@@ -1215,13 +1511,50 @@ export default function App() {
     setRunning(true);
     setError(null);
     try {
-      const result = await resumeWorkflow(run.id);
-      setRun(result);
-      if (result.status === "failed") {
-        setError(`${result.current_stage ? `阶段：${result.current_stage}。` : ""}${result.error || "重试后仍然失败"}`);
-      }
+      const result = await waitForRun(await resumeWorkflow(run.id));
+      showRunError(result, "重试后仍然失败");
     } catch (err) {
       setError(err instanceof Error ? err.message : "继续重试失败");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function handleStep() {
+    setRunning(true);
+    setError(null);
+    try {
+      const result = await waitForRun(
+        run ? await stepWorkflow(run.id) : await runHotVideoWorkflow(seed, "step", viralAnalysis),
+      );
+      showRunError(result, "阶段执行失败");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "阶段执行失败");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function handleNewTask() {
+    setError(null);
+    try {
+      // Creating a task only persists a checkpoint. Nothing starts until the
+      // user explicitly clicks the run button (or executes the next step).
+      const result = await runHotVideoWorkflow(seed, "manual", viralAnalysis);
+      setRun(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "创建新任务失败");
+    }
+  }
+
+  async function handleCancel() {
+    if (!run || !running) return;
+    try {
+      const result = await cancelWorkflow(run.id);
+      setRun(result);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "停止任务失败");
     } finally {
       setRunning(false);
     }
@@ -1285,7 +1618,28 @@ export default function App() {
         onShutdown={handleShutdown}
       />
       <main className="main">
-        <TopBar activeView={activeView} status={status} running={running} onRun={activeView === "radar" ? handleRadarScan : handleRun} />
+        <TopBar
+          activeView={activeView}
+          status={status}
+          running={running || agentBusy}
+          onRun={() => {
+            const agentId = employeeIdFromView(activeView);
+            if (agentId) {
+              void handleSingleAgent(agentId, "", {
+                topic: seed.brief,
+                audience: seed.audience,
+                duration_seconds: seed.duration_seconds,
+                domain: seed.domain,
+                source: viralAnalysis.source,
+                manual_content: viralAnalysis.manual_content
+              });
+            } else if (activeView === "radar") {
+              void handleRadarScan();
+            } else {
+              void handleRun();
+            }
+          }}
+        />
         {error && (
           <div className="error-bar">
             <AlertCircle size={17} />
@@ -1308,6 +1662,9 @@ export default function App() {
             scriptBusy={scriptBusy}
             agents={agents}
             outputs={outputs}
+            onNew={handleNewTask}
+            onStep={handleStep}
+            onCancel={handleCancel}
           />
         )}
         {activeView === "radar" && (
@@ -1325,8 +1682,19 @@ export default function App() {
         )}
         {activeView === "editing" && <EditingQueueView outputs={outputs} seed={seed} />}
         {activeView === "engagement" && <EngagementView agents={agents} />}
-        {activeView === "agents" && <AgentsView agents={agents} />}
         {activeView === "settings" && <SettingsView status={status} currentRun={run} onImport={setRun} onBackendStateChange={() => refreshBackendData()} />}
+        {employeeIdFromView(activeView) && agents.find((agent) => agent.id === employeeIdFromView(activeView)) && (
+          <EmployeeWorkbench
+            agent={agents.find((agent) => agent.id === employeeIdFromView(activeView))!}
+            seed={seed}
+            viralAnalysis={viralAnalysis}
+            onSeedChange={setSeed}
+            onViralAnalysisChange={setViralAnalysis}
+            onRun={(prompt, settings) => void handleSingleAgent(employeeIdFromView(activeView)!, prompt, settings)}
+            busy={agentBusy}
+            output={agentOutputs[employeeIdFromView(activeView)!] ?? null}
+          />
+        )}
         {activeView !== "settings" && <SettingsStrip status={status} />}
       </main>
     </div>

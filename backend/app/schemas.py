@@ -5,7 +5,9 @@ from pydantic import BaseModel, Field
 
 
 AgentStatus = Literal["online", "idle", "busy", "offline"]
-WorkflowStatus = Literal["queued", "running", "completed", "failed"]
+WorkflowStatus = Literal["queued", "running", "paused", "completed", "failed"]
+WorkflowStageStatus = Literal["pending", "running", "completed", "failed"]
+ViralAnalysisSource = Literal["socialdatax", "manual"]
 
 
 class Skill(BaseModel):
@@ -33,11 +35,27 @@ class ApiStatus(BaseModel):
     mode: Literal["live", "local-template"]
     model_available: bool = False
     diagnostic: str | None = None
+    key_preview: str | None = None
 
 
 class TimeoutSettings(BaseModel):
     news_fetch_timeout_seconds: int = Field(default=90, ge=0)
     model_timeout_seconds: int = Field(default=30, ge=0)
+    workflow_timeout_seconds: int = Field(default=300, ge=0, le=86400)
+
+
+class ViralAnalysisConfig(BaseModel):
+    """How the viral analyst should obtain its analysis brief."""
+
+    source: ViralAnalysisSource = "socialdatax"
+    enabled: bool = True
+    manual_content: str = Field(default="", max_length=30000)
+
+
+class RunAgentRequest(BaseModel):
+    agent_id: str
+    prompt: str = ""
+    settings: dict[str, object] = Field(default_factory=dict)
 
 
 class TopicSeed(BaseModel):
@@ -81,6 +99,14 @@ class AgentOutput(BaseModel):
     created_at: datetime
 
 
+class WorkflowLog(BaseModel):
+    timestamp: datetime
+    level: Literal["info", "warning", "error"] = "info"
+    stage: str | None = None
+    message: str
+    detail: str | None = None
+
+
 class WorkflowRun(BaseModel):
     id: str
     status: WorkflowStatus
@@ -94,10 +120,19 @@ class WorkflowRun(BaseModel):
     current_stage: str | None = None
     resumable: bool = False
     source_status: dict[str, str] = Field(default_factory=dict)
+    stage_status: dict[str, WorkflowStageStatus] = Field(default_factory=dict)
+    logs: list[WorkflowLog] = Field(default_factory=list)
+    log_file: str | None = None
+    viral_analysis: ViralAnalysisConfig = Field(default_factory=ViralAnalysisConfig)
 
 
 class RunWorkflowRequest(BaseModel):
     seed: TopicSeed = Field(default_factory=TopicSeed)
+    # ``manual`` creates a checkpoint without starting background work.  This
+    # is used by the UI's "新任务" action; execution only begins after the
+    # user explicitly clicks "运行工作流" or "执行下一步".
+    execution_mode: Literal["auto", "step", "manual"] = "auto"
+    viral_analysis: ViralAnalysisConfig = Field(default_factory=ViralAnalysisConfig)
 
 
 class GenerateScriptRequest(BaseModel):

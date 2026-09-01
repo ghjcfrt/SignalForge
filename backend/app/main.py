@@ -1,4 +1,5 @@
 import json
+import asyncio
 from pathlib import Path
 from uuid import uuid4
 
@@ -14,6 +15,7 @@ from backend.app.schemas import (
     AgentOutput,
     GenerateScriptRequest,
     RunWorkflowRequest,
+    RunAgentRequest,
     Topic,
     TopicSeed,
     WorkflowRun,
@@ -29,6 +31,11 @@ from backend.app.workflows import (
     scout_topics,
     analyze_stocks,
     _load_persisted_runs,
+    create_workflow,
+    next_workflow_stage,
+    run_agent,
+    _checkpoint,
+    _log,
 )
 from backend.app.video_tools import (
     MoneyPrinterTurboRequest,
@@ -40,6 +47,7 @@ from backend.app.video_tools import (
 
 
 app = FastAPI(title="热讯工坊 API", version="0.1.0")
+WORKFLOW_TASKS: dict[str, asyncio.Task] = {}
 
 app.add_middleware(
     CORSMiddleware,
@@ -68,6 +76,13 @@ async def health() -> dict[str, str]:
 async def api_status() -> ApiStatus:
     settings = get_settings()
     model_available, diagnostic = await LlmGateway(settings).check_model()
+    key = settings.ai_api_key or ""
+    if len(key) > 8:
+        key_preview = f"{key[:4]}{'*' * max(4, len(key) - 8)}{key[-4:]}"
+    elif len(key) >= 4:
+        key_preview = f"{key[:2]}{'*' * max(2, len(key) - 4)}{key[-2:]}"
+    else:
+        key_preview = "*" * len(key) if key else None
     return ApiStatus(
         key_variable="AI_API_KEY",
         has_key=settings.ai_enabled,
@@ -76,6 +91,7 @@ async def api_status() -> ApiStatus:
         mode="live" if settings.ai_enabled and model_available else "local-template",
         model_available=model_available,
         diagnostic=diagnostic,
+        key_preview=key_preview,
     )
 
 
@@ -97,8 +113,15 @@ async def agents() -> list[Agent]:
 @app.post("/api/topics/scout", response_model=list[Topic])
 async def topics(seed: TopicSeed) -> list[Topic]:
     try:
-        topics_result, _ = await scout_topics(seed, get_settings())
+        settings = get_settings()
+        scout = scout_topics(seed, settings)
+        if settings.workflow_timeout_seconds > 0:
+            topics_result, _ = await asyncio.wait_for(scout, timeout=settings.workflow_timeout_seconds)
+        else:
+            topics_result, _ = await scout
         return topics_result
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="热点扫描超过工作流总时限，已停止") from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -108,6 +131,16 @@ async def scripts(request: GenerateScriptRequest) -> AgentOutput:
     return await generate_script(request, get_settings())
 
 
+@app.post("/api/agents/{agent_id}/run", response_model=AgentOutput)
+async def run_single_agent(agent_id: str, request: RunAgentRequest) -> AgentOutput:
+    try:
+        return await run_agent(agent_id, request, get_settings())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"{agent_id} 执行失败：{exc}") from exc
+
+
 @app.post("/api/stocks/analyze", response_model=StockAnalysisResult)
 async def stocks(request: StockAnalysisRequest) -> StockAnalysisResult:
     return await analyze_stocks(request, get_settings())
@@ -115,7 +148,48 @@ async def stocks(request: StockAnalysisRequest) -> StockAnalysisResult:
 
 @app.post("/api/workflows/hot-video", response_model=WorkflowRun)
 async def workflow(request: RunWorkflowRequest) -> WorkflowRun:
-    return await run_hot_video_workflow(request.seed, get_settings())
+    run = create_workflow(request.seed, request.viral_analysis)
+    if request.execution_mode == "manual":
+        return run
+    stop_after = next_workflow_stage(run) if request.execution_mode == "step" else None
+    task = asyncio.create_task(_execute_workflow(run, stop_after_stage=stop_after))
+    WORKFLOW_TASKS[run.id] = task
+    return run
+
+
+async def _execute_workflow(run: WorkflowRun, *, stop_after_stage: str | None = None) -> None:
+    try:
+        timeout = get_settings().workflow_timeout_seconds
+        runner = run_hot_video_workflow(
+            run.seed,
+            get_settings(),
+            existing=run,
+            stop_after_stage=stop_after_stage,
+        )
+        if timeout > 0:
+            await asyncio.wait_for(runner, timeout=timeout)
+        else:
+            await runner
+    except asyncio.TimeoutError:
+        run.status = "failed"
+        run.resumable = True
+        run.completed_at = None
+        stage = run.current_stage or "unknown"
+        if stage in run.stage_status:
+            run.stage_status[stage] = "failed"
+        run.error = f"{stage}: 超过工作流总时限 {get_settings().workflow_timeout_seconds} 秒"
+        _log(run, "工作流超过总时限，已停止并保留检查点", stage=stage, level="error", detail=run.error)
+        _checkpoint(run)
+    except asyncio.CancelledError:
+        run.status = "paused"
+        run.resumable = True
+        run.completed_at = None
+        stage = run.current_stage or "unknown"
+        run.error = f"{stage}: 用户手动停止了任务"
+        _log(run, "任务已手动停止，可从检查点继续", stage=stage, level="warning")
+        _checkpoint(run)
+    finally:
+        WORKFLOW_TASKS.pop(run.id, None)
 
 
 @app.get("/api/workflows", response_model=list[WorkflowRun])
@@ -138,9 +212,48 @@ async def workflow_resume(run_id: str) -> WorkflowRun:
         raise HTTPException(status_code=404, detail="Workflow run not found")
     if not run.resumable:
         raise HTTPException(status_code=409, detail="该任务没有可继续的未完成阶段")
-    # Re-enter the persisted task through the same workflow contract. The
-    # checkpoint remains available if a later stage fails again.
-    return await run_hot_video_workflow(run.seed, get_settings(), existing=run)
+    if run_id in WORKFLOW_TASKS and not WORKFLOW_TASKS[run_id].done():
+        raise HTTPException(status_code=409, detail="该任务正在执行中")
+    run.status = "queued"
+    run.error = None
+    task = asyncio.create_task(_execute_workflow(run))
+    WORKFLOW_TASKS[run_id] = task
+    return run
+
+
+@app.post("/api/workflows/{run_id}/step", response_model=WorkflowRun)
+async def workflow_step(run_id: str) -> WorkflowRun:
+    run = get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Workflow run not found")
+    if run.status == "completed":
+        raise HTTPException(status_code=409, detail="该任务已经完成")
+    if run_id in WORKFLOW_TASKS and not WORKFLOW_TASKS[run_id].done():
+        raise HTTPException(status_code=409, detail="该任务正在执行中")
+    stage = next_workflow_stage(run)
+    if not stage:
+        raise HTTPException(status_code=409, detail="没有可执行的阶段")
+    run.status = "queued"
+    run.error = None
+    task = asyncio.create_task(_execute_workflow(run, stop_after_stage=stage))
+    WORKFLOW_TASKS[run_id] = task
+    return run
+
+
+@app.post("/api/workflows/{run_id}/cancel", response_model=WorkflowRun)
+async def workflow_cancel(run_id: str) -> WorkflowRun:
+    run = get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Workflow run not found")
+    task = WORKFLOW_TASKS.get(run_id)
+    if task is None or task.done():
+        raise HTTPException(status_code=409, detail="该任务当前没有正在执行的后台任务")
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    return run
 
 
 @app.get("/api/workflows/{run_id}/export")

@@ -4,8 +4,9 @@
 
 | 员工 | 岗位 | Skill | 安装路径 | 来源 | 许可证 / 状态 |
 |---|---|---|---|---|---|
-| 小李 | 视频剪辑员 | `moneyprinterturbo-video` | `workspaces/agents/video_editor/skills/moneyprinterturbo-video/` | `https://github.com/harry0703/MoneyPrinterTurbo/tree/main/docs/skill` | MIT，默认剪辑链路 |
-| 星辰 | 爆款分析师 | `space-xhs-hotspot` | `workspaces/agents/viral_analyst/skills/creator-buddy/xhs-Skills/space-xhs-hotspot/` | `https://github.com/SpaceZephyr/creator-buddy` | MIT，公开热点分析；至少两个独立来源交叉验证后才能发布 |
+| 赵爽 | 热点监控员 | `news-aggregator-skill` | `workspaces/agents/hotspot_monitor/skills/news-aggregator-skill/` | `https://github.com/cclank/news-aggregator-skill` | MIT，已安装；公开新闻/RSS 聚合 |
+| 小李 | 视频剪辑员 | `moneyprinterturbo-video` | `workspaces/agents/video_editor/skills/moneyprinterturbo-video/` | `https://github.com/harry0703/MoneyPrinterTurbo/tree/main/docs/skill` | MIT，已安装，默认剪辑链路 |
+| 星辰 | 爆款分析师 | `socialdatax-xhs` | 外部 API（无需本地安装） | `https://socialdatax.com/dashboard/api-docs` | 按调用计费；用于小红书爆款样本分析，不作为新闻来源或事实核验来源 |
 | 尤道理 | 运营大师 | `newmedia-operations` | `workspaces/agents/operator/skills/newmedia-operations/` | ClawHub/Volces，owner `swcxy12315`，version `1.0.0` | 上游未声明许可证，已安装 |
 | 方舟 | 产品经理 | `Product-Manager-Skills` | `workspaces/agents/product_manager/skills/Product-Manager-Skills/` | `https://github.com/deanpeters/Product-Manager-Skills` | CC BY-NC-SA 4.0，已安装 |
 | 周周 | 心理疗愈师 | `mental-health-assistant` | `workspaces/agents/healer/skills/mental-health-assistant/` | ClawHub/Volces，owner `ttoooong`，version `2.1.0` | 上游未声明许可证，已安装 |

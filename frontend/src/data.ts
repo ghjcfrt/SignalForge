@@ -18,12 +18,20 @@ import {
 
 export const navItems = [
   { id: "overview", label: "总览", icon: LayoutDashboard },
+  { id: "agent_hotspot_monitor", label: "热点监控员", icon: Newspaper },
+  { id: "agent_viral_analyst", label: "爆款分析师", icon: ChartNoAxesCombined },
+  { id: "agent_copywriter", label: "文案助手", icon: PenLine },
+  { id: "agent_video_editor", label: "视频剪辑员", icon: Clapperboard },
+  { id: "agent_operator", label: "运营大师", icon: Megaphone },
+  { id: "agent_product_manager", label: "产品经理", icon: BriefcaseBusiness },
+  { id: "agent_programmer", label: "程序员", icon: Code2 },
+  { id: "agent_stock_assistant", label: "股票助手", icon: TrendingUp },
+  { id: "agent_healer", label: "心理疗愈师", icon: HeartHandshake },
   { id: "radar", label: "热点雷达", icon: Radio },
   { id: "stocks", label: "股票分析", icon: TrendingUp },
   { id: "scripts", label: "脚本工坊", icon: PenLine },
   { id: "editing", label: "剪辑队列", icon: Clapperboard },
   { id: "engagement", label: "互动回复", icon: MessageCircle },
-  { id: "agents", label: "员工", icon: UsersRound },
   { id: "settings", label: "设置", icon: Settings }
 ] as const;
 

@@ -7,6 +7,7 @@ import type {
   MoneyPrinterTurboRunResult,
   MoneyPrinterTurboStatus,
   TopicSeed,
+  ViralAnalysisConfig,
   Topic,
   WorkflowRun,
   TimeoutSettings
@@ -56,15 +57,38 @@ export function fetchAgents() {
   return request<Agent[]>("/api/agents");
 }
 
-export function runHotVideoWorkflow(seed: TopicSeed) {
+export function runAgent(agentId: string, payload: { prompt?: string; settings?: Record<string, unknown> }) {
+  return request<AgentOutput>(`/api/agents/${agentId}/run`, {
+    method: "POST",
+    body: JSON.stringify({ agent_id: agentId, ...payload })
+  });
+}
+
+export function runHotVideoWorkflow(seed: TopicSeed, execution_mode: "auto" | "step" | "manual" = "auto", viral_analysis?: ViralAnalysisConfig) {
   return request<WorkflowRun>("/api/workflows/hot-video", {
     method: "POST",
-    body: JSON.stringify({ seed })
+    body: JSON.stringify({ seed, execution_mode, viral_analysis })
   });
+}
+
+export function fetchWorkflow(runId: string) {
+  return request<WorkflowRun>(`/api/workflows/${runId}`);
+}
+
+export function fetchWorkflows() {
+  return request<WorkflowRun[]>("/api/workflows");
 }
 
 export function resumeWorkflow(runId: string) {
   return request<WorkflowRun>(`/api/workflows/${runId}/resume`, { method: "POST" });
+}
+
+export function stepWorkflow(runId: string) {
+  return request<WorkflowRun>(`/api/workflows/${runId}/step`, { method: "POST" });
+}
+
+export function cancelWorkflow(runId: string) {
+  return request<WorkflowRun>(`/api/workflows/${runId}/cancel`, { method: "POST" });
 }
 
 export function scoutTopics(seed: TopicSeed) {

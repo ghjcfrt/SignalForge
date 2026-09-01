@@ -38,6 +38,21 @@ class Settings(BaseSettings):
     tushare_token: str | None = Field(default=None, alias="TUSHARE_TOKEN")
     tavily_api_key: str | None = Field(default=None, alias="TAVILY_API_KEY")
     serpapi_key: str | None = Field(default=None, alias="SERPAPI_KEY")
+    socialdatax_api_key: str | None = Field(default=None, alias="SOCIALDATAX_API_KEY")
+    socialdatax_base_url: str = Field(
+        default="https://mcp.socialdatax.com",
+        alias="SOCIALDATAX_BASE_URL",
+    )
+    socialdatax_timeout_seconds: int = Field(
+        default=60,
+        ge=0,
+        alias="SOCIALDATAX_TIMEOUT_SECONDS",
+    )
+    workflow_timeout_seconds: int = Field(
+        default=300,
+        ge=0,
+        validation_alias=AliasChoices("WORKFLOW_TIMEOUT_SECONDS"),
+    )
     news_fetch_timeout_seconds: int = Field(
         default=90,
         ge=0,
@@ -77,6 +92,7 @@ def get_settings() -> Settings:
     if saved:
         settings.news_fetch_timeout_seconds = saved.news_fetch_timeout_seconds
         settings.model_timeout_seconds = saved.model_timeout_seconds
+        settings.workflow_timeout_seconds = saved.workflow_timeout_seconds
     return settings
 
 
@@ -85,6 +101,7 @@ def get_timeout_settings() -> TimeoutSettings:
     return TimeoutSettings(
         news_fetch_timeout_seconds=settings.news_fetch_timeout_seconds,
         model_timeout_seconds=settings.model_timeout_seconds,
+        workflow_timeout_seconds=settings.workflow_timeout_seconds,
     )
 
 
@@ -92,6 +109,7 @@ def update_timeout_settings(value: TimeoutSettings) -> TimeoutSettings:
     settings = get_settings()
     settings.news_fetch_timeout_seconds = value.news_fetch_timeout_seconds
     settings.model_timeout_seconds = value.model_timeout_seconds
+    settings.workflow_timeout_seconds = value.workflow_timeout_seconds
     with _RUNTIME_SETTINGS_LOCK:
         RUNTIME_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
         RUNTIME_SETTINGS_PATH.write_text(

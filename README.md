@@ -9,12 +9,17 @@
 - 总览：执行完整的热视频工作流，查看阶段状态、热点和岗位产物。
 - 热点雷达：调用 `news-aggregator-skill` 抓取公开来源，并要求模型基于来源整理选题。
 - 真实性门禁：至少两个不同域名的独立来源交叉验证后，热点才会进入后续生产阶段；否则任务停止并保留失败检查点。
+- 爆款分析：针对已核验选题调用 SocialDataX 小红书笔记搜索，按高互动样本拆解标题、内容结构和传播钩子；该接口只用于爆款分析，不参与新闻抓取或事实核验。
 - 脚本工坊：单独生成指定主题的短视频脚本，默认目标时长为 30–240 秒。
 - 股票分析：调用 `stock-analysis` Skill 生成股票/财经分析，可选接入 Tushare、Tavily、SerpApi。
 - 剪辑队列：生成 MoneyPrinterTurbo 剪辑方案，并可调用其 helper 尝试真实成片。
 - 互动回复、员工、设置：展示岗位信息、评论处理样例、AI 状态、超时设置、项目导入导出和本地服务控制。
 - 无 Key 回退：没有 `AI_API_KEY` 时仍可启动并验证本地模板、接口和前端流程；需要实时热点和在线模型时必须配置 Key。
 - 任务持久化：运行状态会写入 `workspaces/runs/<run_id>/run-state.json`，服务重启后会尝试恢复已保存的任务。
+- 阶段化执行：完整模式在后台逐阶段执行并实时保存；总览页也可以逐个岗位执行下一步，失败后从当前阶段继续。
+- 执行日志：每个任务会生成 `run.log.jsonl`，界面同步展示阶段、错误类型和详细原因。
+- 爆款分析可切换 SocialDataX 或手写策略；SocialDataX 模式会先取高互动排行，再按已核验选题搜索样本，视频样本会尝试提取口播。
+- 热点候选会先完成全量排序和来源核验，再选择进入后续生产的候选；运行中可以手动停止，或由工作流总时限自动停止并保留检查点。
 
 ## 快速开始（Windows）
 
@@ -53,10 +58,14 @@ Copy-Item .env.example .env
 | `BACKEND_PORT` | 否 | 默认 `8017` |
 | `NEWS_FETCH_TIMEOUT_SECONDS` | 否 | 热点抓取超时；`0` 表示不限时，默认 `90` |
 | `MODEL_TIMEOUT_SECONDS` | 否 | 模型调用超时；`0` 表示不限时，默认 `30` |
+| `WORKFLOW_TIMEOUT_SECONDS` | 否 | 完整工作流总时限；`0` 表示不限时，默认 `300` |
+| `SOCIALDATAX_API_KEY` | 爆款分析可选 | SocialDataX API Key；从 [SocialDataX API Key 页面](https://socialdatax.com/dashboard/api-keys) 获取 |
+| `SOCIALDATAX_BASE_URL` | 否 | 默认 `https://mcp.socialdatax.com` |
+| `SOCIALDATAX_TIMEOUT_SECONDS` | 否 | SocialDataX 请求超时；`0` 表示不限时，默认 `60` |
 | `TUSHARE_TOKEN` | 否 | 股票数据增强 |
 | `TAVILY_API_KEY` / `SERPAPI_KEY` | 否 | 股票新闻增强 |
 
-超时也可以在前端“设置”页修改，保存到 `workspaces/runtime-settings.json`。
+超时也可以在前端“设置”页修改，保存到 `workspaces/runtime-settings.json`；运行中可在总览页点击“停止任务”。
 
 ## API 一览
 
@@ -70,6 +79,7 @@ Copy-Item .env.example .env
 | `POST /api/workflows/hot-video` | 执行完整工作流 |
 | `GET /api/workflows`、`GET /api/workflows/{id}` | 查询任务 |
 | `POST /api/workflows/{id}/resume` | 从失败检查点继续 |
+| `POST /api/workflows/{id}/step` | 只执行下一个岗位阶段；创建任务时传 `execution_mode: "step"` 可进入手动模式 |
 | `GET/POST /api/workflows/{id}/export`、`POST /api/workflows/import` | 项目导出与导入 |
 | `GET/POST /api/video/moneyprinterturbo/*` | 检查并调用剪辑工具 |
 
@@ -82,6 +92,7 @@ Copy-Item .env.example .env
 已纳入仓库的专项能力包括：
 
 - `hotspot_monitor`：`news-aggregator-skill`
+- `viral_analyst`：SocialDataX 小红书笔记搜索 API（[接口文档](https://socialdatax.com/dashboard/api-docs)）
 - `stock_assistant`：`stock-analysis`
 - `video_editor`：MoneyPrinterTurbo 官方 Agent Skill
 - `operator`：`newmedia-operations`
@@ -116,6 +127,7 @@ uv lock --check
 ## 已知边界
 
 - 真实热点依赖公开来源抓取；网络、来源格式或模型超时都会影响结果。
+- SocialDataX 爆款样本依赖有效 API Key 和账户积分；每次小红书笔记搜索按服务商规则计费，未配置时分析阶段会明确降级为待验证假设。
 - `verified` 只表示当前实现完成了来源结构和域名数量检查，不等于人工事实核查或编辑审核。
 - 工作流是本地单机原型，尚未提供数据库、账号权限、队列服务、并发治理和线上监控。
 - MoneyPrinterTurbo 真实成片还依赖其上游运行环境、模型和素材服务，生成失败时仍可保留剪辑方案。

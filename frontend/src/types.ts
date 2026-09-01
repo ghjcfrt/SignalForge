@@ -1,5 +1,6 @@
 export type AgentStatus = "online" | "idle" | "busy" | "offline";
-export type WorkflowStatus = "queued" | "running" | "completed" | "failed";
+export type WorkflowStatus = "queued" | "running" | "paused" | "completed" | "failed";
+export type WorkflowStageStatus = "pending" | "running" | "completed" | "failed";
 
 export interface Skill {
   name: string;
@@ -26,11 +27,19 @@ export interface ApiStatus {
   mode: "live" | "local-template";
   model_available: boolean;
   diagnostic: string | null;
+  key_preview?: string | null;
 }
 
 export interface TimeoutSettings {
   news_fetch_timeout_seconds: number;
   model_timeout_seconds: number;
+  workflow_timeout_seconds: number;
+}
+
+export interface ViralAnalysisConfig {
+  source: "socialdatax" | "manual";
+  enabled: boolean;
+  manual_content: string;
 }
 
 export interface TopicSeed {
@@ -48,6 +57,7 @@ export interface Topic {
   risk: string;
   verification_status?: "verified" | "unverified";
   verification_note?: string;
+  cross_check_note?: string;
   sources?: Array<{ name: string; url: string; published_at: string; claim: string }>;
 }
 
@@ -58,6 +68,14 @@ export interface AgentOutput {
   content: string;
   artifact_path: string;
   created_at: string;
+}
+
+export interface WorkflowLog {
+  timestamp: string;
+  level: "info" | "warning" | "error";
+  stage: string | null;
+  message: string;
+  detail: string | null;
 }
 
 export interface EngagementComment {
@@ -97,6 +115,10 @@ export interface WorkflowRun {
   current_stage?: string | null;
   resumable?: boolean;
   source_status?: Record<string, string>;
+  stage_status?: Record<string, WorkflowStageStatus>;
+  logs?: WorkflowLog[];
+  log_file?: string | null;
+  viral_analysis?: ViralAnalysisConfig;
 }
 
 export interface MoneyPrinterTurboStatus {

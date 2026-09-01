@@ -35,9 +35,9 @@ AGENTS: list[Agent] = [
         workspace=_workspace("viral_analyst"),
         skills=[
             Skill(
-                name="space-xhs-hotspot",
-                source="https://github.com/SpaceZephyr/creator-buddy/tree/main/xhs-Skills/space-xhs-hotspot (MIT)",
-                description="搜集小红书公开热点，按数据源、时间窗和样本量分析热点结构；无可核验数据时明确降级，不编造互动数据。",
+                name="socialdatax-xhs",
+                source="https://socialdatax.com/dashboard/api-docs",
+                description="通过 SocialDataX 搜索小红书公开笔记，获取标题、摘要、点赞/收藏/评论/分享和发布时间，用于爆款样本分析。",
             )
         ],
     ),
