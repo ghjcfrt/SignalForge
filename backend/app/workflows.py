@@ -730,27 +730,44 @@ async def analyze_stocks(request: StockAnalysisRequest, settings: Settings) -> S
     command = [sys.executable, str(STOCK_DATA_SCRIPT), "--stocks", request.stocks, "--days", str(request.days)]
     if request.include_news:
         command.append("--news")
+    process_error: str | None = None
+    stdout = b""
+    stderr = b""
     try:
-        process = await asyncio.create_subprocess_exec(
-            *command,
-            cwd=STOCK_SKILL_DIR,
-            env=env,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        completed = await asyncio.wait_for(
+            asyncio.to_thread(
+                subprocess.run,
+                command,
+                cwd=STOCK_SKILL_DIR,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            ),
+            timeout=120,
         )
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
+        stdout, stderr = completed.stdout or b"", completed.stderr or b""
     except asyncio.TimeoutError:
-        process.kill()
-        await process.wait()
-        raise RuntimeError("Stock Analysis Skill data fetch exceeded 120 seconds")
+        process_error = "Stock Analysis Skill data fetch exceeded 120 seconds"
 
     raw_text = stdout.decode("utf-8", errors="replace")
-    if process.returncode != 0:
-        raise RuntimeError(stderr.decode("utf-8", errors="replace") or raw_text)
+    if process_error is None and completed.returncode != 0:
+        process_error = stderr.decode("utf-8", errors="replace").strip() or raw_text.strip()
     try:
         raw_data = json.loads(raw_text)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Stock Analysis Skill returned invalid JSON: {raw_text[-500:]}") from exc
+    except json.JSONDecodeError:
+        raw_data = {}
+        process_error = process_error or f"Stock Analysis Skill returned invalid JSON: {raw_text[-500:]}"
+
+    if process_error:
+        raw_data = {
+            **(raw_data if isinstance(raw_data, dict) else {}),
+            "errors": [
+                *((raw_data.get("errors") or []) if isinstance(raw_data, dict) else []),
+                {"type": "data_fetch", "error": process_error},
+            ],
+            "total_success": 0,
+        }
 
     fallback = json.dumps(raw_data, ensure_ascii=False, indent=2)
     prompt = STOCK_ANALYSIS_PROMPT.read_text(encoding="utf-8") if STOCK_ANALYSIS_PROMPT.exists() else ""
@@ -763,7 +780,11 @@ async def analyze_stocks(request: StockAnalysisRequest, settings: Settings) -> S
             "这不是投资建议。\n\n分析框架：\n" + prompt + "\n\n输出模板：\n" + template
         ),
         user="请分析以下 Stock Analysis Skill 数据：\n" + fallback,
-        fallback=fallback + "\n\n> 免责声明：以上分析仅供参考，不构成投资建议。投资有风险，入市需谨慎。",
+        fallback=(
+            (f"# 股票数据暂不可用\n\n{process_error}\n\n请稍后重试。\n\n" if process_error else "")
+            + fallback
+            + "\n\n> 免责声明：以上分析仅供参考，不构成投资建议。投资有风险，入市需谨慎。"
+        ),
     )
     return StockAnalysisResult(
         skill_source="https://github.com/liusai0820/Stock-Analysis-Skill",
@@ -1202,14 +1223,7 @@ async def run_agent(agent_id: str, request: RunAgentRequest, settings: Settings)
             include_news=bool(request.settings.get("include_news", True)),
         )
         analysis = await analyze_stocks(stock_request, settings)
-        return AgentOutput(
-            agent_id=agent_id,
-            agent_name=agent.name,
-            title="股票助手独立分析",
-            content=analysis.report,
-            artifact_path=str(run_dir / "stock_assistant" / "说明.md"),
-            created_at=_now(),
-        )
+        return _output(run_dir, agent_id, "股票助手独立分析", analysis.report)
     if agent_id == "viral_analyst":
         notes: list[dict] = []
         source = str(request.settings.get("source") or "socialdatax")
