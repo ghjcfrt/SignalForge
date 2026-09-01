@@ -170,6 +170,26 @@ def _source_domain(url: str) -> str:
     return host[4:] if host.startswith("www.") else host
 
 
+def _evidence_domain(source: SourceEvidence) -> str:
+    """Return the publisher domain, including known RSS/search fallbacks.
+
+    Reuters items can arrive through Google News RSS, so the transport host
+    (news.google.com) is not the publishing domain. Using the declared source
+    name here preserves the independent-domain gate without weakening it.
+    """
+    name = source.name.casefold()
+    aliases = (
+        (("reuters",), "reuters.com"),
+        (("bbc",), "bbc.co.uk"),
+        (("华尔街", "wallstreet"), "wallstreetcn.com"),
+        (("微博", "weibo"), "weibo.com"),
+    )
+    for needles, domain in aliases:
+        if any(needle in name for needle in needles):
+            return domain
+    return _source_domain(source.url)
+
+
 def _source_weight(item: dict) -> float:
     source = str(item.get("source") or item.get("channel") or "").casefold()
     for name, weight in NEWS_SOURCE_WEIGHTS.items():
@@ -284,7 +304,7 @@ def _normalize_model_topics(content: str, raw_items: list[dict]) -> list[Topic]:
         title = str(item.get("title") or "").strip()
         if not title or not sources:
             continue
-        domains = {_source_domain(source.url) for source in sources if _source_domain(source.url)}
+        domains = {_evidence_domain(source) for source in sources if _evidence_domain(source)}
         is_verified = len(sources) >= 2 and len(domains) >= 2
         status = "verified" if is_verified else "unverified"
         checked_at = _parse_public_datetime(item.get("checked_at")) or datetime.now().astimezone()
@@ -387,7 +407,7 @@ def _validate_topics(topics: list[Topic]) -> list[Topic]:
 
     validated: list[Topic] = []
     for topic in merged.values():
-        domains = {_source_domain(source.url) for source in topic.sources if _source_domain(source.url)}
+        domains = {_evidence_domain(source) for source in topic.sources if _evidence_domain(source)}
         independent = len(topic.sources) >= 2 and len(domains) >= 2
         topic.verification_status = "verified" if independent else "unverified"
         topic.checked_at = topic.checked_at or _now()
