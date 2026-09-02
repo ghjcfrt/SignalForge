@@ -22,6 +22,7 @@ from backend.app.schemas import (
     StockAnalysisRequest,
     StockAnalysisResult,
     TimeoutSettings,
+    StepWorkflowRequest,
 )
 from backend.app.workflows import (
     generate_script,
@@ -31,8 +32,11 @@ from backend.app.workflows import (
     scout_topics,
     analyze_stocks,
     _load_persisted_runs,
+    _ensure_workflow_state,
     create_workflow,
     next_workflow_stage,
+    reset_workflow_from_stage,
+    WORKFLOW_STAGES,
     run_agent,
     _checkpoint,
     _log,
@@ -149,6 +153,7 @@ async def stocks(request: StockAnalysisRequest) -> StockAnalysisResult:
 @app.post("/api/workflows/hot-video", response_model=WorkflowRun)
 async def workflow(request: RunWorkflowRequest) -> WorkflowRun:
     run = create_workflow(request.seed, request.viral_analysis)
+    run.selected_topic_title = request.selected_topic_title
     if request.execution_mode == "manual":
         return run
     stop_after = next_workflow_stage(run) if request.execution_mode == "step" else None
@@ -165,6 +170,7 @@ async def _execute_workflow(run: WorkflowRun, *, stop_after_stage: str | None = 
             get_settings(),
             existing=run,
             stop_after_stage=stop_after_stage,
+            selected_topic_title=run.selected_topic_title,
         )
         if timeout > 0:
             await asyncio.wait_for(runner, timeout=timeout)
@@ -222,19 +228,30 @@ async def workflow_resume(run_id: str) -> WorkflowRun:
 
 
 @app.post("/api/workflows/{run_id}/step", response_model=WorkflowRun)
-async def workflow_step(run_id: str) -> WorkflowRun:
+async def workflow_step(run_id: str, request: StepWorkflowRequest | None = None) -> WorkflowRun:
     run = get_run(run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Workflow run not found")
-    if run.status == "completed":
-        raise HTTPException(status_code=409, detail="该任务已经完成")
     if run_id in WORKFLOW_TASKS and not WORKFLOW_TASKS[run_id].done():
         raise HTTPException(status_code=409, detail="该任务正在执行中")
-    stage = next_workflow_stage(run)
+    requested_stage = request.stage.strip() if request and request.stage else None
+    if requested_stage and requested_stage not in WORKFLOW_STAGES:
+        raise HTTPException(status_code=400, detail=f"未知流水线阶段：{requested_stage}")
+    if requested_stage:
+        if requested_stage != "hotspot_monitor" and not run.topics:
+            raise HTTPException(status_code=409, detail="该阶段依赖热点监控产物，请先完成热点监控")
+        reset_workflow_from_stage(run, requested_stage)
+        stage = requested_stage
+    else:
+        if run.status == "completed":
+            raise HTTPException(status_code=409, detail="该任务已经完成")
+        stage = next_workflow_stage(run)
     if not stage:
         raise HTTPException(status_code=409, detail="没有可执行的阶段")
     run.status = "queued"
     run.error = None
+    if request and request.selected_topic_title is not None:
+        run.selected_topic_title = request.selected_topic_title.strip() or None
     task = asyncio.create_task(_execute_workflow(run, stop_after_stage=stage))
     WORKFLOW_TASKS[run_id] = task
     return run
@@ -273,6 +290,7 @@ async def workflow_import(file: UploadFile = File(...)) -> WorkflowRun:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"项目文件无效：{exc}") from exc
     run.id = f"imported-{uuid4().hex[:10]}"
+    _ensure_workflow_state(run)
     RUNS[run.id] = run
     Path(run.run_dir).mkdir(parents=True, exist_ok=True)
     Path(run.run_dir, "run-state.json").write_text(run.model_dump_json(indent=2), encoding="utf-8")

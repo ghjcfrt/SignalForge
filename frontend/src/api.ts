@@ -83,8 +83,11 @@ export function resumeWorkflow(runId: string) {
   return request<WorkflowRun>(`/api/workflows/${runId}/resume`, { method: "POST" });
 }
 
-export function stepWorkflow(runId: string) {
-  return request<WorkflowRun>(`/api/workflows/${runId}/step`, { method: "POST" });
+export function stepWorkflow(runId: string, selected_topic_title?: string | null, stage?: string) {
+  return request<WorkflowRun>(`/api/workflows/${runId}/step`, {
+    method: "POST",
+    body: JSON.stringify({ selected_topic_title: selected_topic_title ?? null, stage: stage ?? null })
+  });
 }
 
 export function cancelWorkflow(runId: string) {

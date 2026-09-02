@@ -102,6 +102,13 @@ function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
+// A stale browser snapshot can outlive the backend filter. Keep collection
+// diagnostics out of the visible candidate cards until the server refreshes.
+function isDiagnosticTopic(topic: Topic): boolean {
+  const text = `${topic.title} ${topic.source_hint} ${topic.angle}`.toLowerCase();
+  return /(缺乏可用来源|不构成.{0,12}(热点|候选)|本批次|仅检测到|未出现|来源不足|模型未返回|报错|(?:执行|请求|抓取|来源|模型|搜索|接口).{0,8}(?:失败|错误|超时)|(?:失败|错误|超时).{0,8}(?:执行|请求|抓取|来源|模型|搜索|接口)|\b(error|failed|failure|exception|timeout)\b)/i.test(text);
+}
+
 function readSaved<T>(key: string, fallback: T): T {
   try {
     const value = window.localStorage.getItem(key);
@@ -123,6 +130,11 @@ function readSavedRun(): WorkflowRun | null {
     resumable: true,
     completed_at: null
   };
+}
+
+function readSavedView(): ViewId {
+  const saved = readSaved<string>("signalforge.activeView", "overview");
+  return navItems.some((item) => item.id === saved) ? saved as ViewId : "overview";
 }
 
 function readViralAnalysis(): ViralAnalysisConfig {
@@ -295,7 +307,7 @@ function TopBar({
   );
 }
 
-function PipelineBoard({ run, running, onNew, onStep, onCancel }: { run: WorkflowRun | null; running: boolean; onNew: () => void; onStep: () => void; onCancel: () => void }) {
+function PipelineBoard({ run, running, onNew, onStep, onCancel, onRerun }: { run: WorkflowRun | null; running: boolean; onNew: () => void; onStep: () => void; onCancel: () => void; onRerun: (stage: string) => void }) {
   const completedIds = new Set(run?.outputs.map((output) => output.agent_id) ?? []);
   const stageStatus = run?.stage_status ?? {};
   const statusLabels = { pending: "待调度", running: "执行中", completed: "已产出", failed: "失败" };
@@ -308,7 +320,7 @@ function PipelineBoard({ run, running, onNew, onStep, onCancel }: { run: Workflo
           <p>热点监控员选题 -&gt; 爆款分析师定结构 -&gt; 文案助手写脚本 -&gt; 剪辑员成片。</p>
         </div>
           <div className="pipeline-actions">
-            <span className={cn("run-state", run?.status === "completed" && "done")}>
+            <span className={cn("run-state", (running || run?.status === "running") && "running", run?.status === "completed" && "done")}>
               {running ? "执行中" : run?.status === "paused" ? "已暂停" : run?.status === "queued" ? "待调度" : run?.status === "failed" ? "执行失败" : run?.status === "completed" ? "已完成" : "待开始"}
             </span>
             <button className="ghost-button compact" onClick={onNew} disabled={running} type="button">
@@ -348,6 +360,7 @@ function PipelineBoard({ run, running, onNew, onStep, onCancel }: { run: Workflo
                   <Icon size={18} />
                 </div>
                 <span>{stage.owner}</span>
+                {run && !running && state !== "running" && <button className="ghost-button rerun-stage" type="button" onClick={() => onRerun(stage.agentId)}>重跑</button>}
               </div>
               <h3>{stage.title}</h3>
               <strong>{stage.action}</strong>
@@ -457,19 +470,20 @@ function AgentRoster({ agents }: { agents: Agent[] }) {
   );
 }
 
-function TopicList({ run, topics }: { run?: WorkflowRun | null; topics?: Topic[] }) {
-  const items = topics ?? run?.topics ?? [];
+function TopicList({ run, topics, selectable, selectedTitle, onSelect }: { run?: WorkflowRun | null; topics?: Topic[]; selectable?: boolean; selectedTitle?: string | null; onSelect?: (title: string | null) => void }) {
+  const items = (topics ?? run?.topics ?? []).filter((topic) => !isDiagnosticTopic(topic));
   return (
     <section className="panel topics-panel">
       <div className="panel-heading tight">
         <div>
           <h2>热点候选</h2>
-          <p>由赵爽初筛，星辰负责判断传播结构。</p>
+          <p>由赵爽初筛，星辰负责判断传播结构。不勾选则默认第一个。</p>
         </div>
       </div>
       <div className="topic-list">
         {items.map((topic) => (
-          <article className="topic-card" key={topic.title}>
+            <article className={cn("topic-card", selectable && "topic-selectable", selectedTitle === topic.title && "topic-selected")} key={topic.title}>
+              {selectable && <label className="topic-check" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selectedTitle === topic.title} onChange={() => onSelect?.(selectedTitle === topic.title ? null : topic.title)} aria-label={`选择热点：${topic.title}`} /></label>}
             <div className="heat">
               <Sparkles size={15} />
               <span>{topic.heat}</span>
@@ -504,7 +518,7 @@ function OutputList({ outputs }: { outputs: AgentOutput[] }) {
       </div>
       <div className="outputs-list">
         {outputs.map((output) => (
-          <details className="output-item" key={`${output.agent_id}-${output.created_at}`} open={output.agent_id === "copywriter"}>
+          <details className="output-item" key={`${output.agent_id}-${output.created_at}`}>
             <summary>
               <span>{output.agent_name}</span>
               <strong>{output.title}</strong>
@@ -847,7 +861,7 @@ function EmployeeWorkbench({
             </label>
             <div className="segmented-control"><button className={cn("segment-button", viralAnalysis.source === "socialdatax" && "selected")} onClick={() => onViralAnalysisChange({ ...viralAnalysis, source: "socialdatax" })} type="button">SocialDataX</button><button className={cn("segment-button", viralAnalysis.source === "manual" && "selected")} onClick={() => onViralAnalysisChange({ ...viralAnalysis, source: "manual" })} type="button">手写分析</button></div>
             <small className="field-hint">此处设置会同步到总览工作流；SocialDataX 只用于爆款样本分析，不是热点新闻源。</small>
-            {viralAnalysis.source === "manual" && <textarea className="manual-analysis-input" value={viralAnalysis.manual_content} onChange={(event) => onViralAnalysisChange({ ...viralAnalysis, manual_content: event.target.value })} placeholder="填写角度、观点、结构和规则" />}
+            {viralAnalysis.source === "manual" && <textarea className="manual-analysis-input" value={viralAnalysis.manual_content} onChange={(event) => onViralAnalysisChange({ ...viralAnalysis, manual_content: event.target.value })} placeholder="填写具体爆款样本、数据或你的分析结论；不要粘贴角色提示词" />}
           </>}
           {agent.id === "stock_assistant" && <label><span>股票代码或名称</span><input value={seed.brief} onChange={(event) => onSeedChange({ ...seed, brief: event.target.value })} placeholder="600519, TSLA" /></label>}
           <label><span>本次任务</span><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={isHotspot ? "例如：找今天影响普通创作者的 AI 行业热点" : "描述这次要让员工完成什么"} /></label>
@@ -1197,7 +1211,8 @@ function SettingsView({ status, currentRun, onImport, onBackendStateChange }: { 
 
   return (
     <div className="single-view">
-      <section className="panel settings-panel">
+      <div className="settings-overview-grid">
+      <section className="panel settings-panel runtime-settings-panel">
         <div className="panel-heading tight">
           <div>
             <h2>运行配置</h2>
@@ -1227,7 +1242,7 @@ function SettingsView({ status, currentRun, onImport, onBackendStateChange }: { 
           </div>
         </div>
       </section>
-      <section className="panel settings-panel">
+      <section className="panel settings-panel project-settings-panel">
         <div className="panel-heading tight">
           <div><h2>项目文件</h2><p>手动保存或恢复热点、产物和流水线进度。</p></div>
         </div>
@@ -1237,6 +1252,8 @@ function SettingsView({ status, currentRun, onImport, onBackendStateChange }: { 
           <input ref={fileInputRef} type="file" accept="application/json,.json" hidden onChange={(event) => handleImport(event.target.files?.[0])} />
         </div>
       </section>
+      </div>
+      <div className="settings-management-grid">
       <section className="panel settings-panel timeout-settings-panel">
         <div className="panel-heading tight">
           <div>
@@ -1349,6 +1366,7 @@ function SettingsView({ status, currentRun, onImport, onBackendStateChange }: { 
           )}
         </div>
       </section>
+      </div>
       <SettingsStrip status={status} />
     </div>
   );
@@ -1365,7 +1383,10 @@ function OverviewView({
   outputs,
   onNew,
   onStep,
-  onCancel
+  onCancel,
+  onRerun,
+  selectedTopicTitle,
+  onSelectTopic
 }: {
   run: WorkflowRun | null;
   running: boolean;
@@ -1378,12 +1399,15 @@ function OverviewView({
   onNew: () => void;
   onStep: () => void;
   onCancel: () => void;
+  onRerun: (stage: string) => void;
+  selectedTopicTitle: string | null;
+  onSelectTopic: (title: string | null) => void;
 }) {
   return (
     <div className="content-grid">
       <div className="left-stack">
-        <PipelineBoard run={run} running={running} onNew={onNew} onStep={onStep} onCancel={onCancel} />
-        <TopicList run={run} />
+        <PipelineBoard run={run} running={running} onNew={onNew} onStep={onStep} onCancel={onCancel} onRerun={onRerun} />
+        <TopicList run={run} selectable={run?.status === "paused" && run.stage_status?.hotspot_monitor === "completed" && run.stage_status?.viral_analyst !== "completed"} selectedTitle={selectedTopicTitle} onSelect={onSelectTopic} />
         <OutputList outputs={outputs} />
       </div>
       <div className="right-stack">
@@ -1400,12 +1424,13 @@ function OverviewView({
 }
 
 export default function App() {
-  const [activeView, setActiveView] = useState<ViewId>("overview");
+  const [activeView, setActiveView] = useState<ViewId>(readSavedView);
   const [status, setStatus] = useState<ApiStatus | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [seed, setSeed] = useState<TopicSeed>(() => readSaved("signalforge.seed", defaultSeed));
   const [viralAnalysis, setViralAnalysis] = useState<ViralAnalysisConfig>(readViralAnalysis);
   const [run, setRun] = useState<WorkflowRun | null>(readSavedRun);
+  const [selectedTopicTitle, setSelectedTopicTitle] = useState<string | null>(() => readSaved< string | null>("signalforge.selectedTopicTitle", null));
   const [radarTopics, setRadarTopics] = useState<Topic[]>([]);
   const [extraOutputs, setExtraOutputs] = useState<AgentOutput[]>([]);
   const [running, setRunning] = useState(false);
@@ -1447,12 +1472,20 @@ export default function App() {
   }, [seed]);
 
   useEffect(() => {
+    window.localStorage.setItem("signalforge.activeView", JSON.stringify(activeView));
+  }, [activeView]);
+
+  useEffect(() => {
     window.localStorage.setItem("signalforge.viralAnalysis", JSON.stringify(viralAnalysis));
   }, [viralAnalysis]);
 
   useEffect(() => {
     if (run) window.localStorage.setItem("signalforge.currentRun", JSON.stringify(run));
   }, [run]);
+
+  useEffect(() => {
+    window.localStorage.setItem("signalforge.selectedTopicTitle", JSON.stringify(selectedTopicTitle));
+  }, [selectedTopicTitle]);
 
   useEffect(() => {
     if (run?.status === "failed" && run.error) {
@@ -1525,7 +1558,7 @@ export default function App() {
     setError(null);
     try {
       const result = await waitForRun(
-        run ? await stepWorkflow(run.id) : await runHotVideoWorkflow(seed, "step", viralAnalysis),
+        run ? await stepWorkflow(run.id, selectedTopicTitle) : await runHotVideoWorkflow(seed, "step", viralAnalysis),
       );
       showRunError(result, "阶段执行失败");
     } catch (err) {
@@ -1533,6 +1566,25 @@ export default function App() {
     } finally {
       setRunning(false);
     }
+  }
+
+  async function handleRerun(stage: string) {
+    if (!run) return;
+    setRunning(true);
+    setError(null);
+    try {
+      const result = await waitForRun(await stepWorkflow(run.id, selectedTopicTitle, stage));
+      showRunError(result, "阶段重跑失败");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "阶段重跑失败");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  function handleSelectTopic(title: string | null) {
+    setSelectedTopicTitle(title);
+    setRun((current) => current ? { ...current, selected_topic_title: title } : current);
   }
 
   async function handleNewTask() {
@@ -1665,6 +1717,9 @@ export default function App() {
             onNew={handleNewTask}
             onStep={handleStep}
             onCancel={handleCancel}
+            onRerun={handleRerun}
+            selectedTopicTitle={selectedTopicTitle}
+            onSelectTopic={handleSelectTopic}
           />
         )}
         {activeView === "radar" && (

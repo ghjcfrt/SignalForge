@@ -17,6 +17,8 @@ class ChatResult:
 class LlmGateway:
     """Thin OpenAI-compatible gateway with a deterministic local fallback."""
 
+    MODEL_CHECK_RETRIES = 3
+
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self._client: AsyncOpenAI | None = None
@@ -100,11 +102,23 @@ class LlmGateway:
             return False, "AI_API_KEY 未配置"
         if not self.settings.ai_model:
             return False, "AI_MODEL 未配置"
-        try:
-            models = await self._client.models.list()
-            ids = {item.id for item in models.data}
-            if self.settings.ai_model not in ids:
-                return False, f"模型 {self.settings.ai_model} 不在服务商可用模型列表中"
-            return True, None
-        except Exception as exc:
-            return False, self._failure_detail(exc)
+        last_error: Exception | None = None
+        for attempt in range(self.MODEL_CHECK_RETRIES + 1):
+            try:
+                models = await self._client.models.list()
+                ids = {item.id for item in models.data}
+                if self.settings.ai_model not in ids:
+                    return False, f"模型 {self.settings.ai_model} 不在服务商可用模型列表中"
+                return True, None
+            except Exception as exc:
+                last_error = exc
+                if not self._is_retryable_network_error(exc) or attempt >= self.MODEL_CHECK_RETRIES:
+                    break
+                # A short exponential backoff smooths over transient provider/network failures.
+                await asyncio.sleep(min(2 ** attempt, 4))
+
+        assert last_error is not None
+        detail = self._failure_detail(last_error)
+        if self._is_retryable_network_error(last_error):
+            detail = f"{detail}; 已重试{self.MODEL_CHECK_RETRIES}次"
+        return False, detail

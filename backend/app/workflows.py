@@ -8,6 +8,7 @@ import asyncio
 import os
 import subprocess
 import sys
+import re
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -199,10 +200,155 @@ def _source_weight(item: dict) -> float:
 
 
 def _news_relevance(item: dict, seed: TopicSeed) -> float:
+    """Estimate whether a fetched item is about the requested direction.
+
+    The old whitespace split treated a Chinese brief as one giant token, so
+    unrelated headlines could all reach the evidence-only fallback.  Keep the
+    score deliberately conservative: ASCII words are matched as words and
+    Chinese text is matched using meaningful 2+ character chunks.
+    """
     haystack = f"{item.get('title', '')} {item.get('summary', '')}".casefold()
-    terms = [term for term in f"{seed.domain} {seed.brief}".split() if len(term.strip()) > 1]
-    matches = sum(1 for term in terms if term.casefold() in haystack)
+    seed_text = f"{seed.domain} {seed.brief}".casefold()
+    ascii_terms = re.findall(r"[a-z0-9][a-z0-9+#.-]{1,}", seed_text)
+    cjk_terms: list[str] = []
+    for run in re.findall(r"[\u4e00-\u9fff]{2,}", seed_text):
+        cjk_terms.extend(run[index : index + 2] for index in range(len(run) - 1))
+    # Very generic words would make an unrelated feed look relevant.
+    stopwords = {"近期", "热点", "内容", "生产", "关注", "普通", "一线", "创作者", "创业者"}
+    terms = list(dict.fromkeys([term for term in ascii_terms + cjk_terms if term not in stopwords]))
+    if not terms:
+        return 0.0
+    matches = sum(1 for term in terms if term in haystack)
     return min(1.0, matches / max(1, min(5, len(terms))))
+
+
+def _task_overlap_score(text: str, seed: TopicSeed) -> float:
+    """Score overlap with the requested domain, keeping audience boilerplate out."""
+    domain_score = _news_relevance({"title": text}, TopicSeed(domain=seed.domain, brief="", audience=""))
+    brief_score = _news_relevance({"title": text}, TopicSeed(domain="", brief=seed.brief, audience=""))
+    # The explicit domain is the strongest signal; the brief adds context.
+    return min(1.0, domain_score * 0.70 + brief_score * 0.30)
+
+
+def _topic_heat_score(topic: Topic, seed: TopicSeed) -> int:
+    """Compute a deterministic 0-100 score from relevance and evidence quality.
+
+    Weights intentionally put task fit first, then independent corroboration.
+    A second URL on the same publisher does not count as a second source.
+    """
+    title_hint_overlap = _task_overlap_score(f"{topic.title} {topic.source_hint}", seed)
+    claim_overlap = _task_overlap_score(" ".join(source.claim for source in topic.sources), seed)
+    # Claims support the headline but cannot rescue an unrelated title.
+    overlap = title_hint_overlap * 0.80 + claim_overlap * 0.20
+    if title_hint_overlap < 0.10:
+        overlap *= 0.25
+    source_count = len(topic.sources)
+    domain_count = len({_evidence_domain(source) for source in topic.sources if _evidence_domain(source)})
+    corroboration = min(1.0, domain_count / 3) * 0.75 + min(1.0, source_count / 4) * 0.25
+    timestamps = [source.published_at.timestamp() for source in topic.sources if source.published_at]
+    if timestamps:
+        age_days = max(0.0, (datetime.now().timestamp() - max(timestamps)) / 86400)
+        recency = max(0.0, 1.0 - age_days / 14.0)
+    else:
+        recency = 0.0
+    # Source reliability is a small tie-breaker; it must not overpower fit or
+    # independent corroboration.
+    reliability = 0.0
+    for source in topic.sources:
+        name = source.name.casefold()
+        reliability = max(
+            reliability,
+            1.0 if any(token in name for token in ("reuters", "bbc", "华尔街", "wallstreet")) else 0.6,
+        )
+    return max(0, min(100, round(overlap * 55 + corroboration * 30 + recency * 10 + reliability * 5)))
+
+
+_DIAGNOSTIC_TOPIC_PATTERNS = (
+    r"缺乏可用来源",
+    r"不构成.{0,12}(热点|候选)",
+    r"本批次",
+    r"仅检测到",
+    r"未出现",
+    r"无法从.{0,20}(确认|判断)",
+    r"缺少.{0,8}(核验|证据|来源)",
+    r"来源不足",
+    r"模型未返回",
+    r"需补充",
+    r"提示[:：]",
+    r"作为泛.{0,8}(舆情|叙事)",
+    r"报错",
+    r"(?:执行|请求|抓取|来源|模型|搜索|接口).{0,8}(?:失败|错误|超时)",
+    r"(?:失败|错误|超时).{0,8}(?:执行|请求|抓取|来源|模型|搜索|接口)",
+    r"输入中.{0,8}(为\s*0|为零)",
+    r"\b(?:error|failed|failure|exception|timeout)\b",
+)
+
+
+def _is_diagnostic_topic(topic: Topic) -> bool:
+    """Reject model prose that reports a collection/validation problem.
+
+    Such prose used to be wrapped in a valid ``Topic`` object and displayed as
+    a headline.  Check the title and supporting hint because models often put
+    the diagnostic sentence in one of those fields.
+    """
+    text = " ".join((topic.title, topic.source_hint, topic.angle)).casefold()
+    return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in _DIAGNOSTIC_TOPIC_PATTERNS)
+
+
+def _clean_topic_title(title: str) -> str:
+    # ``（候选）`` is a model label, not part of the actual headline.
+    return re.sub(r"^\s*[（(]\s*候选\s*[）)]\s*", "", title).strip()
+
+
+def _topic_match_tokens(text: str) -> set[str]:
+    aliases = {
+        "戴尔": "dell", "服务器": "server", "算力": "compute", "英伟达": "nvidia",
+        "黄仁勋": "jensen", "开放人工智能": "openai", "人工智能": "ai", "代理": "agent",
+    }
+    normalized = text.casefold()
+    for source, target in aliases.items():
+        normalized = normalized.replace(source, f" {target} ")
+    ascii_tokens = set(re.findall(r"[a-z0-9][a-z0-9+#.-]{2,}", normalized))
+    cjk_tokens: set[str] = set()
+    for run in re.findall(r"[\u4e00-\u9fff]{2,}", normalized):
+        cjk_tokens.update(run[index : index + 2] for index in range(len(run) - 1))
+    return (ascii_tokens | cjk_tokens) - {
+        "AI", "人工", "智能", "需求", "市场", "股价", "行业", "公司", "模型", "产品", "新闻", "热点"
+    }
+
+
+def _source_supports_topic(topic: Topic, item: dict) -> bool:
+    topic_tokens = _topic_match_tokens(f"{topic.title} {topic.source_hint}")
+    item_tokens = _topic_match_tokens(f"{item.get('title', '')} {item.get('summary', '')}")
+    overlap = topic_tokens & item_tokens
+    strong_ascii = {token for token in overlap if re.fullmatch(r"[a-z0-9+#.-]{4,}", token)}
+    # Two shared content terms are enough for translated headlines; a single
+    # distinctive long token (e.g. Dell, OpenAI, Astra) is also acceptable.
+    return len(overlap) >= 2 or bool(strong_ascii)
+
+
+def _augment_topic_sources(topics: list[Topic], raw_items: list[dict]) -> None:
+    """Attach corroborating fetched items the model omitted from ``sources``."""
+    for topic in topics:
+        known_urls = {source.url for source in topic.sources}
+        for item in raw_items:
+            url = str(item.get("url") or "").strip()
+            if not url or url in known_urls or not _source_supports_topic(topic, item):
+                continue
+            published_at = _parse_public_datetime(item.get("pubdate") or item.get("time"))
+            name = str(item.get("source") or "公开来源").strip()
+            title = str(item.get("title") or "").strip()
+            if not published_at or not name or not title:
+                continue
+            topic.sources.append(
+                SourceEvidence(
+                    name=name,
+                    url=url,
+                    published_at=published_at,
+                    claim=str(item.get("summary") or title).strip(),
+                )
+            )
+            known_urls.add(url)
 
 
 def _rank_news_items(items: list[dict], seed: TopicSeed) -> list[dict]:
@@ -230,10 +376,12 @@ def _rank_news_items(items: list[dict], seed: TopicSeed) -> list[dict]:
         )
         engagement_signal = min(1.0, engagement / 1_000_000) if engagement else 0.0
         score = (
-            _source_weight(copy) * 45
-            + recency * 25
-            + _news_relevance(copy, seed) * 20
-            + engagement_signal * 10
+            # Domain overlap is the primary filter. Engagement is only a small
+            # tie-breaker so a generic hot-search list cannot dominate.
+            _task_overlap_score(f"{copy.get('title', '')} {copy.get('summary', '')}", seed) * 70
+            + _source_weight(copy) * 15
+            + recency * 10
+            + engagement_signal * 5
         )
         copy["rank_score"] = round(score, 3)
         copy["rank_reason"] = {
@@ -246,6 +394,37 @@ def _rank_news_items(items: list[dict], seed: TopicSeed) -> list[dict]:
         ranked.append(copy)
     ranked.sort(key=lambda value: (-float(value.get("rank_score", 0)), value.get("_fetch_order", 0)))
     return ranked
+
+
+def _diversify_news_items(items: list[dict], limit: int = NEWS_FETCH_LIMIT) -> list[dict]:
+    """Keep the model evidence window representative across source labels.
+
+    Ranking by engagement alone can fill all 30 slots with Weibo's real-time
+    hot list, hiding BBC/Wall Street/Reuters entries that could corroborate an
+    event.  Take a small round-robin sample from every source, then fill any
+    remaining slots by rank.
+    """
+    if len(items) <= limit:
+        return items
+    groups: dict[str, list[dict]] = {}
+    for item in items:
+        key = str(item.get("source") or item.get("channel") or "unknown")
+        groups.setdefault(key, []).append(item)
+    selected: list[dict] = []
+    # One item per source per round gives every configured source a chance.
+    round_index = 0
+    while len(selected) < limit:
+        progressed = False
+        for group in groups.values():
+            if round_index < len(group):
+                selected.append(group[round_index])
+                progressed = True
+                if len(selected) >= limit:
+                    break
+        if not progressed:
+            break
+        round_index += 1
+    return selected
 
 
 def _normalize_source_evidence(
@@ -301,7 +480,7 @@ def _normalize_model_topics(content: str, raw_items: list[dict]) -> list[Topic]:
             for raw_source in raw_sources
             if (normalized := _normalize_source_evidence(raw_source, evidence_by_url))
         ]
-        title = str(item.get("title") or "").strip()
+        title = _clean_topic_title(str(item.get("title") or ""))
         if not title or not sources:
             continue
         domains = {_evidence_domain(source) for source in sources if _evidence_domain(source)}
@@ -342,11 +521,13 @@ def _normalize_model_topics(content: str, raw_items: list[dict]) -> list[Topic]:
     return _validate_topics(topics)
 
 
-def _evidence_only_topics(raw_items: list[dict]) -> list[Topic]:
+def _evidence_only_topics(raw_items: list[dict], seed: TopicSeed | None = None) -> list[Topic]:
     topics: list[Topic] = []
     seen_urls: set[str] = set()
     for item in raw_items:
-        title = str(item.get("title") or "").strip()
+        if seed is not None and _news_relevance(item, seed) <= 0:
+            continue
+        title = _clean_topic_title(str(item.get("title") or ""))
         url = str(item.get("url") or "").strip()
         source_name = str(item.get("source") or "公开来源").strip()
         published_at = _parse_public_datetime(item.get("pubdate") or item.get("time"))
@@ -359,8 +540,7 @@ def _evidence_only_topics(raw_items: list[dict]) -> list[Topic]:
             published_at=published_at,
             claim=str(item.get("summary") or title).strip(),
         )
-        topics.append(
-            Topic(
+        topic = Topic(
                 title=title,
                 heat=_coerce_heat(item.get("heat")),
                 source_hint=f"{source_name}：{title}",
@@ -374,15 +554,19 @@ def _evidence_only_topics(raw_items: list[dict]) -> list[Topic]:
                 angle=f"围绕“{title}”梳理公开信息，避免超出来源内容。",
                 risk="单一来源，发布前必须复核原文，不要把未核验信息当作事实。",
             )
-        )
+        # Do not turn collection diagnostics or clearly off-topic headlines
+        # into user-facing candidates when the model fallback is used.
+        if _is_diagnostic_topic(topic):
+            continue
+        topics.append(topic)
         # Continue traversing the complete source result. The limit is applied
         # after validation so an early single-source item cannot hide a later
         # independently corroborated candidate.
     topics = topics[:20]
-    return _validate_topics(topics)
+    return _validate_topics(topics, seed)
 
 
-def _validate_topics(topics: list[Topic]) -> list[Topic]:
+def _validate_topics(topics: list[Topic], seed: TopicSeed | None = None) -> list[Topic]:
     """Validate all candidates before selecting one for downstream work.
 
     The model may suggest a verification flag, but it is not trusted. Every
@@ -392,6 +576,9 @@ def _validate_topics(topics: list[Topic]) -> list[Topic]:
     """
     merged: dict[str, Topic] = {}
     for topic in topics:
+        topic.title = _clean_topic_title(topic.title)
+        if not topic.title or _is_diagnostic_topic(topic):
+            continue
         key = " ".join(topic.title.casefold().split())
         previous = merged.get(key)
         if previous is None:
@@ -417,6 +604,8 @@ def _validate_topics(topics: list[Topic]) -> list[Topic]:
         else:
             topic.cross_check_note = f"已完成全量候选核验：当前仅有 {len(domains)} 个独立域名来源。"
             topic.verification_note = "来源不足或域名不独立，不得作为已核实事实发布。"
+        if seed is not None:
+            topic.heat = _topic_heat_score(topic, seed)
         validated.append(topic)
     return sorted(validated, key=lambda topic: (-topic.heat, topic.title))
 
@@ -909,6 +1098,16 @@ def _load_persisted_runs() -> None:
 
 def _ensure_workflow_state(workflow: WorkflowRun) -> None:
     """Backfill fields for checkpoints created before the staged runner."""
+    # Older checkpoints may contain model-generated diagnostics as topics.
+    # Re-apply the current boundary when loading them so a service restart (or
+    # an already-open UI) cannot keep displaying those pseudo-candidates.
+    original_topics = workflow.topics
+    workflow.topics = _validate_topics(workflow.topics)
+    if len(workflow.topics) != len(original_topics) or any(
+        left.model_dump(mode="json") != right.model_dump(mode="json")
+        for left, right in zip(workflow.topics, original_topics)
+    ):
+        _checkpoint(workflow)
     for stage in WORKFLOW_STAGES:
         if stage not in workflow.stage_status:
             workflow.stage_status[stage] = "completed" if any(
@@ -947,7 +1146,11 @@ def _fallback_topics(seed: TopicSeed) -> list[Topic]:
     ]
 
 
-def _fallback_hotspot_report(seed: TopicSeed, topics: list[Topic]) -> str:
+def _fallback_hotspot_report(
+    seed: TopicSeed,
+    topics: list[Topic],
+    source_inventory: dict[str, int] | None = None,
+) -> str:
     lines = [
         f"# 热点监控报告：{seed.domain}",
         "",
@@ -955,6 +1158,9 @@ def _fallback_hotspot_report(seed: TopicSeed, topics: list[Topic]) -> str:
         f"目标观众：{seed.audience}",
         "",
     ]
+    if source_inventory:
+        inventory = "、".join(f"{name} {count} 条" for name, count in source_inventory.items())
+        lines.extend([f"本轮抓取来源：{inventory}", ""])
     for index, topic in enumerate(topics, start=1):
         lines.extend(
             [
@@ -1028,6 +1234,31 @@ def next_workflow_stage(workflow: WorkflowRun) -> str | None:
     )
 
 
+def reset_workflow_from_stage(workflow: WorkflowRun, stage: str) -> None:
+    """Reset a stage and all downstream outputs, retaining upstream work."""
+    if stage not in WORKFLOW_STAGES:
+        raise ValueError(f"未知流水线阶段：{stage}")
+    index = WORKFLOW_STAGES.index(stage)
+    for downstream in WORKFLOW_STAGES[index:]:
+        workflow.stage_status[downstream] = (
+            "completed" if downstream == "viral_analyst" and not workflow.viral_analysis.enabled else "pending"
+        )
+        workflow.outputs = [output for output in workflow.outputs if output.agent_id != downstream]
+    if stage == "hotspot_monitor":
+        # A hotspot rerun must fetch fresh candidates; later-stage reruns keep
+        # the already selected and verified topic list.
+        workflow.topics = []
+        workflow.selected_topic_title = None
+        workflow.source_status.pop("news-aggregator", None)
+    workflow.current_stage = stage
+    workflow.status = "paused"
+    workflow.error = None
+    workflow.completed_at = None
+    workflow.resumable = True
+    _log(workflow, f"已请求重跑阶段：{stage}（保留上游产物）", stage=stage)
+    _checkpoint(workflow)
+
+
 async def scout_topics(seed: TopicSeed, settings: Settings) -> tuple[list[Topic], AgentOutput]:
     run_dir = WORKSPACE_DIR / "runs" / f"radar-{uuid4().hex[:12]}"
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -1036,7 +1267,13 @@ async def scout_topics(seed: TopicSeed, settings: Settings) -> tuple[list[Topic]
     try:
         news_items = await _run_news_aggregator(settings.news_fetch_timeout_seconds)
         raw_items.extend({**item, "channel": "news-aggregator-skill"} for item in news_items)
-        source_status["news-aggregator"] = f"ok:{len(news_items)}"
+        source_counts: dict[str, int] = {}
+        for item in news_items:
+            name = str(item.get("source") or "未知来源")
+            source_counts[name] = source_counts.get(name, 0) + 1
+        source_status["news-aggregator"] = "ok:" + ", ".join(
+            f"{name}={count}" for name, count in source_counts.items()
+        )
     except Exception as exc:
         source_status["news-aggregator"] = f"error:{_exception_detail(exc)}"
     if not raw_items:
@@ -1056,7 +1293,8 @@ async def scout_topics(seed: TopicSeed, settings: Settings) -> tuple[list[Topic]
     raw_items = _rank_news_items(recent_items, seed)
     if not raw_items:
         raise RuntimeError("热点来源返回结果全部早于最近14天，已停止展示旧热点")
-    evidence = json.dumps(raw_items[:NEWS_FETCH_LIMIT], ensure_ascii=False)
+    evidence_items = _diversify_news_items(raw_items, NEWS_FETCH_LIMIT)
+    evidence = json.dumps(evidence_items, ensure_ascii=False)
     prompt_contract = (
         "Return one JSON object only. heat must be an integer from 0 to 100; "
         "verification_status must be verified or unverified; each sources item must contain "
@@ -1091,11 +1329,26 @@ async def scout_topics(seed: TopicSeed, settings: Settings) -> tuple[list[Topic]
         except (TypeError, ValueError, json.JSONDecodeError):
             topics = []
     if not topics:
-        topics = _evidence_only_topics(raw_items)
+        topics = _evidence_only_topics(raw_items, seed)
     if not topics:
         raise RuntimeError("赵爽没有基于公开实时结果返回有效热点，已拒绝展示模型记忆内容")
-    topics = _validate_topics(topics)
-    report = _fallback_hotspot_report(seed, topics)
+    _augment_topic_sources(topics, raw_items)
+    # A topic must be grounded in at least one fetched item relevant to the
+    # requested direction.  This blocks model-generated "all sources were
+    # unrelated" diagnostics from leaking into the candidate list.
+    evidence_by_url = {str(item.get("url") or "").strip(): item for item in raw_items}
+    topics = [
+        topic
+        for topic in _validate_topics(topics, seed)
+        if any(_news_relevance(evidence_by_url.get(source.url, {}), seed) > 0 for source in topic.sources)
+    ]
+    if not topics:
+        raise RuntimeError("公开来源中没有与当前方向匹配的热点候选，已停止展示诊断或无关条目")
+    source_inventory: dict[str, int] = {}
+    for item in raw_items:
+        source_name = str(item.get("source") or item.get("channel") or "未知来源")
+        source_inventory[source_name] = source_inventory.get(source_name, 0) + 1
+    report = _fallback_hotspot_report(seed, topics, source_inventory)
     output = _output(run_dir, "hotspot_monitor", "热点监控报告", report)
     return topics, output
 
@@ -1105,24 +1358,28 @@ async def generate_script(request: GenerateScriptRequest, settings: Settings) ->
     run_dir = WORKSPACE_DIR / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     gateway = LlmGateway(settings)
-    fallback = f"""# 90-120 秒短视频脚本：{request.topic}
+    fact_end = max(12, round(request.duration_seconds * 0.58))
+    analysis_end = max(fact_end + 8, round(request.duration_seconds * 0.86))
+    fallback = f"""# {request.duration_seconds} 秒短视频脚本：{request.topic}
 
 ## 开场钩子（0-8 秒）
 你有没有发现，最近大家聊 AI 已经不只是在聊模型，而是在聊“一个人能不能开一家公司”。
 
-## 事件经过（8-65 秒）
+## 事件经过（8-{fact_end} 秒）
 这次的核心看点是：{request.topic}。它背后的变化不是某个工具突然变强，而是工作流开始被拆成多个 AI 员工：有人盯热点，有人拆爆款，有人写脚本，有人给出剪辑方案，还有人负责运营复盘。
 
-## 关键分析（65-95 秒）
+## 关键分析（{fact_end}-{analysis_end} 秒，事实与推测分开）
 真正有价值的地方，是老板不用把所有事情都交给一个 AI。每个 Agent 只负责一个清晰岗位，拥有自己的工作区和技能，输出也能被追踪和复用。
 
-## 收束观点（95-{request.duration_seconds} 秒）
+## 收束观点（{analysis_end}-{request.duration_seconds} 秒）
 所以这不是“AI 替你躺赚”，而是把过去团队里的重复劳动，拆成可管理、可检查、可迭代的流程。你仍然要做判断，但生产速度会完全不一样。
 """
     result = await gateway.complete(
         system=(
             "你是热讯工坊的文案助手洛一。请写中文短视频口播脚本，"
             "结构必须包含开场钩子、事件经过、关键分析、收束观点，语气克制但有传播性。"
+            f"严格控制为约 {request.duration_seconds} 秒，时间轴最后一段必须结束在 {request.duration_seconds} 秒；"
+            "只输出成稿，不要输出‘如你愿意我可以’等助手元话术。"
         ),
         user=(
             f"选题：{request.topic}\n角度：{request.angle}\n"
@@ -1130,11 +1387,56 @@ async def generate_script(request: GenerateScriptRequest, settings: Settings) ->
         ),
         fallback=fallback,
     )
-    return _output(run_dir, "copywriter", "短视频脚本", result.content)
+    return _output(run_dir, "copywriter", "短视频脚本", _clean_script_output(result.content, request.duration_seconds))
+
+
+def _clean_script_output(content: str, duration_seconds: int) -> str:
+    """Remove assistant meta-talk and make the requested duration explicit."""
+    text = content.strip()
+    # Model responses sometimes append an offer to do more work. It is not
+    # part of a publishable script and must never reach downstream agents.
+    text = re.split(
+        r"(?m)^\s*(?:如你愿意|如果你需要|我也可以|如需我|以上脚本之外)",
+        text,
+        maxsplit=1,
+    )[0].rstrip()
+    # Keep a stable duration contract even when a model omits it from the
+    # heading. Do not rewrite spoken copy or invent additional facts.
+    # If the model supplied a timeline with a different endpoint, scale only
+    # mm:ss labels so the final segment lands on the requested duration.
+    stamps = list(re.finditer(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)", text))
+    if len(stamps) >= 2:
+        last_seconds = int(stamps[-1].group(1)) * 60 + int(stamps[-1].group(2))
+        if last_seconds > 0 and abs(last_seconds - duration_seconds) >= 3:
+            scale = duration_seconds / last_seconds
+            def replace_stamp(match: re.Match[str]) -> str:
+                current = int(match.group(1)) * 60 + int(match.group(2))
+                adjusted = max(0, round(current * scale))
+                return f"{adjusted // 60}:{adjusted % 60:02d}"
+            text = re.sub(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)", replace_stamp, text)
+    if text and not re.search(rf"(?m){duration_seconds}\s*秒", text):
+        text = f"**目标时长：{duration_seconds} 秒**\n\n" + text
+    return text
+
+
+def _looks_like_analysis_prompt(content: str) -> bool:
+    text = content.casefold()
+    markers = ("你是爆款分析师", "严格输出", "请围绕用户提供", "不要直接写完整", "## 推荐角度")
+    return sum(marker.casefold() in text for marker in markers) >= 2
+
+
+def _relevant_topic_sources(topic: Topic) -> list[SourceEvidence]:
+    terms = {term for term in re.split(r"[^\w\u4e00-\u9fff]+", topic.title) if len(term) >= 2}
+    primary = [source for source in topic.sources if topic.source_url and source.url == topic.source_url]
+    relevant = [source for source in topic.sources if any(term.casefold() in (source.claim + source.name).casefold() for term in terms)]
+    relevant = primary + [source for source in relevant if source not in primary]
+    return relevant[:8] or topic.sources[:2]
 
 
 def _viral_analysis_fallback(topic: Topic, seed: TopicSeed, *, manual_content: str = "") -> str:
-    facts = "\n".join(f"- {source.name}：{source.claim}" for source in topic.sources) or "- 仅使用已核验选题中的事实，不补充来源之外的内容。"
+    facts = "\n".join(f"- {source.name}：{source.claim}" for source in _relevant_topic_sources(topic)) or "- 仅使用已核验选题中的事实，不补充来源之外的内容。"
+    if _looks_like_analysis_prompt(manual_content):
+        manual_content = "未提供具体爆款样本或分析结论；以下仅依据已核验选题生成施工图，不能宣称为数据驱动规律。"
     if manual_content.strip():
         return f"""# 爆款分析：{topic.title}
 
@@ -1142,19 +1444,21 @@ def _viral_analysis_fallback(topic: Topic, seed: TopicSeed, *, manual_content: s
 {manual_content.strip()}
 
 ## 推荐角度
-从普通用户可能受影响的具体利益切入，保持与已核验事实一致。
+从“AI 基础设施需求变化对{seed.audience}的实际影响”切入，回答受众最关心的成本、交付和机会变化。
 
 ## 核心观点
-说明这件事影响哪些人、影响是什么，以及来源目前能支持到什么程度。
+已核验报道支持“{topic.title}”这一事实；它提示基础设施需求可能增强，但不能直接推出某个细分赛道必然获利。
 
 ## 标题结构
-风险 + 具体对象，不直接公布未经核验的结论。
+1. 事实变化 + 受众疑问：戴尔上调全年指引，AI 创业者该关注哪一环？
+2. 反常现象 + 核心疑问：AI 服务器需求变强，机会真的只在卖模型吗？
+3. 热点事件 + 实际影响：从戴尔预期上调，看 AI 工具团队的成本变化。
 
 ## 开头策略
-前 3 秒先抛出用户可能遇到的影响，再交代事实边界。
+“戴尔上调全年预期，报道指向 AI 服务器需求；这对做 AI 工具的人意味着什么？”随后立即交代来源，并标明机会判断待验证。
 
 ## 内容顺序
-1. 先说影响\n2. 交代已确认事实\n3. 解释已知原因\n4. 说明普通人怎么办
+1. 先抛出算力、交付和成本影响\n2. 交代已确认事实\n3. 区分事实与推测，列出等待验证的机会方向\n4. 给出查订单、交付周期和毛利的验证动作
 
 ## 必须包含的事实
 {facts}
@@ -1167,26 +1471,31 @@ def _viral_analysis_fallback(topic: Topic, seed: TopicSeed, *, manual_content: s
 """
     return f"""# 爆款分析：{topic.title}
 
+## 样本依据
+未接入 SocialDataX 或其他平台样本；以下建议是针对本选题的创作假设，不代表平台总体规律。
+
 ## 推荐角度
-从普通用户利益可能受影响的具体场景切入。
+从“AI 基础设施需求变化对{seed.audience}的实际影响”切入，回答受众最关心的成本、交付和机会变化。
 
 ## 核心观点
-这件事会影响哪些人，以及公开事实目前能证明什么。
+已核验报道支持“{topic.title}”这一事实；它提示基础设施需求可能增强，但不能直接推出某个细分赛道必然获利。
 
 ## 标题结构
-风险 + 具体对象，不直接公布未经核验的结论。
+1. 事实变化 + 受众疑问：戴尔上调全年指引，AI 创业者该关注哪一环？
+2. 反常现象 + 核心疑问：AI 服务器需求变强，机会真的只在卖模型吗？
+3. 热点事件 + 实际影响：从戴尔预期上调，看 AI 工具团队的成本变化。
 
 ## 开头策略
-前 3 秒先抛出用户可能损失的结果，再交代已确认事实。
+“戴尔上调全年预期，报道指向 AI 服务器需求；这对做 AI 工具的人意味着什么？”随后立即交代来源，并标明机会判断待验证。
 
 ## 内容顺序
-1. 先说影响\n2. 交代已确认事实\n3. 解释事件原因\n4. 说明普通人怎么办
+1. 先抛出算力、交付和成本影响\n2. 交代已确认事实\n3. 区分事实与推测，列出等待验证的机会方向\n4. 给出查订单、交付周期和毛利的验证动作
 
 ## 必须包含的事实
 {facts}
 
 ## 不能出现
-- 未核实动机\n- 夸张结论\n- 情绪化定性
+- 未核实动机\n- 夸张结论\n- 情绪化定性\n- 将单一公司表现说成行业确定趋势
 
 ## 表达风格
 {seed.duration_seconds} 秒口播，面向{seed.audience}，通俗、紧凑。
@@ -1249,10 +1558,17 @@ async def run_agent(agent_id: str, request: RunAgentRequest, settings: Settings)
         source = str(request.settings.get("source") or "socialdatax")
         manual_content = str(request.settings.get("manual_content") or "").strip()
         if source == "manual":
+            if not manual_content:
+                raise ValueError("爆款分析手动模式需要填写分析依据或爆款样本")
+            if _looks_like_analysis_prompt(manual_content):
+                manual_content = "检测到输入是角色提示词而非分析依据；请补充具体爆款样本、数据或你的分析结论。"
             fallback = f"""# 爆款分析师独立分析
 
 ## 用户手写分析依据
-{manual_content or prompt}
+{manual_content}
+
+## 样本依据
+仅使用用户提供的样本或事实；没有平台样本时，不得声称已发现数据规律。
 
 ## 推荐角度
 从具体受众的实际影响切入。
@@ -1261,10 +1577,12 @@ async def run_agent(agent_id: str, request: RunAgentRequest, settings: Settings)
 只围绕用户提供的主题和事实下结论。
 
 ## 标题结构
-风险 + 具体对象，不直接公布未经核验的结论。
+1. 事实变化 + 受众疑问
+2. 反常现象 + 核心疑问
+3. 热点事件 + 普通人的实际影响
 
 ## 开头策略
-前 3 秒先抛出用户可能遇到的影响，再交代事实边界。
+前 3 秒先抛出受众最关心的影响，再用一句话交代事实来源和待核验边界。
 
 ## 内容顺序
 1. 先说影响\n2. 交代已确认事实\n3. 解释已知原因\n4. 说明普通人怎么办
@@ -1340,6 +1658,7 @@ async def run_hot_video_workflow(
     existing: WorkflowRun | None = None,
     stop_after_stage: str | None = None,
     viral_analysis: ViralAnalysisConfig | None = None,
+    selected_topic_title: str | None = None,
 ) -> WorkflowRun:
     """Run from the first incomplete checkpoint, optionally stopping after one stage."""
     if stop_after_stage is not None and stop_after_stage not in WORKFLOW_STAGES:
@@ -1365,6 +1684,8 @@ async def run_hot_video_workflow(
     workflow.seed = seed
     if viral_analysis is not None:
         workflow.viral_analysis = viral_analysis
+    if selected_topic_title is not None:
+        workflow.selected_topic_title = selected_topic_title.strip() or None
     if not workflow.viral_analysis.enabled:
         workflow.stage_status["viral_analyst"] = "completed"
     workflow.status = "running"
@@ -1434,7 +1755,10 @@ async def run_hot_video_workflow(
                         "热点候选已完成全量核验，但没有候选通过双来源交叉核验；"
                         f"当前候选数：{len(workflow.topics)}，请检查热点来源后重试。"
                     )
-                selected = verified_topics[0]
+                selected = next(
+                    (topic for topic in verified_topics if topic.title == workflow.selected_topic_title),
+                    verified_topics[0],
+                )
                 analyst_output = output_for("viral_analyst")
                 if analyst_output:
                     analyst_content = analyst_output.content
@@ -1443,12 +1767,21 @@ async def run_hot_video_workflow(
                     if analysis_config.source == "manual":
                         if not analysis_config.manual_content.strip():
                             raise RuntimeError("爆款分析已选择手动模式，但没有填写分析依据")
-                        workflow.source_status["viral-analysis"] = "manual:user input"
-                        analyst_content = _viral_analysis_fallback(
-                            selected,
-                            seed,
-                            manual_content=analysis_config.manual_content,
-                        )
+                        if _looks_like_analysis_prompt(analysis_config.manual_content):
+                            # Older checkpoints could have persisted the UI's
+                            # role prompt as manual content. Do not make a
+                            # stage rerun impossible; discard that invalid
+                            # input and fall back to the verified topic facts.
+                            workflow.source_status["viral-analysis"] = "manual:invalid prompt ignored"
+                            _log(workflow, "检测到旧的角色提示词，已忽略并按选题事实生成爆款分析", stage=stage, level="warning")
+                            analyst_content = _viral_analysis_fallback(selected, seed)
+                        else:
+                            workflow.source_status["viral-analysis"] = "manual:user input"
+                            analyst_content = _viral_analysis_fallback(
+                                selected,
+                                seed,
+                                manual_content=analysis_config.manual_content,
+                            )
                     else:
                         socialdatax_notes: list[dict] = []
                         ranked_notes: list[dict] = []
@@ -1509,12 +1842,17 @@ async def run_hot_video_workflow(
                         analyst_content = _ensure_viral_analysis_sections(result.content, selected, seed)
                     save_output("viral_analyst", "爆款分析", analyst_content)
             elif stage == "copywriter":
-                selected = (_verified_topics(workflow.topics) or [None])[0]
+                selected = next(
+                    (topic for topic in _verified_topics(workflow.topics) if topic.title == workflow.selected_topic_title),
+                    (_verified_topics(workflow.topics) or [None])[0],
+                )
                 if selected is None:
                     raise RuntimeError("找不到已核验选题，无法生成脚本")
                 analyst_content = output_for("viral_analyst").content if output_for("viral_analyst") else analyst_content
                 script_output = output_for("copywriter")
                 script_fallback = f"""# 口播脚本：{selected.title}
+
+**目标时长：{seed.duration_seconds} 秒（时间轴须落在 0-{seed.duration_seconds} 秒）**
 
 ## 开场钩子（0-8 秒）
 如果你把 AI 当成一个聊天框，它只能帮你省一点时间；但如果你把它拆成一家公司，事情就变了。
@@ -1522,7 +1860,7 @@ async def run_hot_video_workflow(
 ## 事件经过（8-60 秒）
 今天这个热点是：{selected.title}。它之所以值得关注，是因为内容生产已经开始被拆成岗位：赵爽负责找热点，星辰负责判断能不能爆，洛一写脚本，小李给出剪辑方案，尤道理负责发布和复盘。
 
-## 关键分析（60-95 秒）
+## 关键分析（60-95 秒，事实与推测分开）
 这里最重要的不是名字，而是边界。每个 AI 员工有自己的任务、产物和工作区，老板只负责决策和验收。
 
 ## 总结（95-{seed.duration_seconds} 秒）
@@ -1532,14 +1870,21 @@ async def run_hot_video_workflow(
                     script_content = script_output.content
                 else:
                     result = await gateway.complete(
-                        system="你是文案助手洛一。写中文短视频脚本，含时间段、口播、镜头提示。",
+                        system=(
+                            "你是文案助手洛一。写中文短视频脚本，含时间段、口播、镜头提示。"
+                            f"严格控制为约 {seed.duration_seconds} 秒，时间轴最后一段必须结束在 {seed.duration_seconds} 秒。"
+                            "必须区分已确认事实与推测/待验证判断；只输出成稿，不要输出助手元话术。"
+                        ),
                         user=f"请基于爆款分析写 {seed.duration_seconds} 秒脚本：\n{analyst_content}",
                         fallback=script_fallback,
                     )
-                    script_content = result.content
+                    script_content = _clean_script_output(result.content, seed.duration_seconds)
                     save_output("copywriter", "短视频脚本", script_content)
             elif stage == "video_editor":
-                selected = (_verified_topics(workflow.topics) or [None])[0]
+                selected = next(
+                    (topic for topic in _verified_topics(workflow.topics) if topic.title == workflow.selected_topic_title),
+                    (_verified_topics(workflow.topics) or [None])[0],
+                )
                 if selected is None:
                     raise RuntimeError("找不到已核验选题，无法生成剪辑方案")
                 script_content = output_for("copywriter").content if output_for("copywriter") else script_content
@@ -1565,7 +1910,10 @@ async def run_hot_video_workflow(
                     )
                     save_output("video_editor", "自动剪辑方案", result.content)
             elif stage == "operator":
-                selected = (_verified_topics(workflow.topics) or [None])[0]
+                selected = next(
+                    (topic for topic in _verified_topics(workflow.topics) if topic.title == workflow.selected_topic_title),
+                    (_verified_topics(workflow.topics) or [None])[0],
+                )
                 if selected is None:
                     raise RuntimeError("找不到已核验选题，无法生成运营方案")
                 script_content = output_for("copywriter").content if output_for("copywriter") else script_content
@@ -1634,8 +1982,15 @@ async def run_hot_video_workflow(
 
 
 def list_runs() -> list[WorkflowRun]:
+    for workflow in RUNS.values():
+        _ensure_workflow_state(workflow)
     return sorted(RUNS.values(), key=lambda run: run.created_at, reverse=True)
 
 
 def get_run(run_id: str) -> WorkflowRun | None:
-    return RUNS.get(run_id)
+    workflow = RUNS.get(run_id)
+    if workflow is not None:
+        # Keep API responses consistent for runs created before the diagnostic
+        # filtering was added (the UI may still have one open).
+        _ensure_workflow_state(workflow)
+    return workflow

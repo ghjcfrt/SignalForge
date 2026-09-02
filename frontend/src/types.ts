@@ -119,6 +119,7 @@ export interface WorkflowRun {
   logs?: WorkflowLog[];
   log_file?: string | null;
   viral_analysis?: ViralAnalysisConfig;
+  selected_topic_title?: string | null;
 }
 
 export interface MoneyPrinterTurboStatus {

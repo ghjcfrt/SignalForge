@@ -101,7 +101,12 @@ button {
   gap: 6px;
 }
 
+.nav-list > div {
+  width: 100%;
+}
+
 .nav-item {
+  width: 100%;
   height: 42px;
   padding: 0 12px;
   display: flex;
@@ -340,6 +345,37 @@ button {
   min-width: 0;
 }
 
+.settings-overview-grid {
+  display: grid;
+  /* Keep the left column at the original half-width. The remaining space
+     after the fixed project card is intentionally left open. */
+  grid-template-columns: calc((100% - 18px) / 2) 420px;
+  gap: 18px;
+  align-items: stretch;
+}
+
+.settings-overview-grid > .settings-panel {
+  min-width: 0;
+}
+
+.project-settings-panel {
+  display: grid;
+  grid-template-rows: auto minmax(118px, 1fr);
+}
+
+.settings-management-grid {
+  display: grid;
+  /* The service panel has its own width; do not inherit the project-file
+     card's fixed 420px column. */
+  grid-template-columns: calc((100% - 18px) / 2) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.settings-management-grid > * {
+  min-width: 0;
+}
+
 .panel {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -505,6 +541,11 @@ button {
   color: #08705f;
 }
 
+.pipeline-actions .run-state.running {
+  background: #fff8d8;
+  color: #8a6800;
+}
+
 .pipeline-grid {
   padding: 16px;
   display: grid;
@@ -542,6 +583,24 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.stage-head {
+  position: relative;
+  padding-right: 42px;
+}
+
+.stage-head .rerun-stage {
+  position: absolute;
+  top: -4px;
+  right: 0;
+  width: 88px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .stage-head span {
@@ -753,6 +812,7 @@ button {
 }
 
 .topic-card {
+  position: relative;
   min-height: 168px;
   padding: 14px;
   border: 1px solid var(--border);
@@ -1393,26 +1453,52 @@ button {
 }
 
 .project-file-actions {
-  padding: 16px 18px 18px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  padding: 14px 16px 16px;
+  display: grid;
+  grid-template-columns: 300px;
+  grid-template-rows: repeat(2, minmax(34px, auto));
+  align-content: center;
+  justify-content: center;
   gap: 10px;
 }
 
 .project-file-actions button {
-  flex: 0 1 auto;
-  min-width: 132px;
+  width: 300px;
+  min-width: 300px;
+  height: 42px;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  gap: 6px;
+}
+
+.project-file-actions .primary-button {
+  min-width: 0;
+}
+
+.project-file-actions .ghost-button {
+  grid-column: auto;
 }
 
 @media (max-width: 560px) {
+  .settings-overview-grid,
+  .settings-management-grid {
+    grid-template-columns: 1fr;
+  }
+
   .project-file-actions {
     display: grid;
     grid-template-columns: 1fr;
   }
 
   .project-file-actions button {
-    width: 100%;
+    width: min(300px, 100%);
+    min-width: 0;
+  }
+
+  .project-file-actions .ghost-button {
+    grid-column: auto;
   }
 }
 
@@ -1687,6 +1773,7 @@ button {
 }
 
 .service-panel {
+  height: 486px;
   overflow: hidden;
 }
 
@@ -1918,6 +2005,18 @@ button {
 }
 
 @media (max-width: 920px) {
+  .settings-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-management-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .service-panel {
+    height: auto;
+  }
+
   .app-shell {
     grid-template-columns: 1fr;
   }
@@ -1994,4 +2093,25 @@ button {
     grid-template-columns: 1fr;
     gap: 5px;
   }
+}
+.topic-check {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: block;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.topic-check input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.topic-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
 }

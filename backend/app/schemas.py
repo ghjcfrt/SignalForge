@@ -124,6 +124,7 @@ class WorkflowRun(BaseModel):
     logs: list[WorkflowLog] = Field(default_factory=list)
     log_file: str | None = None
     viral_analysis: ViralAnalysisConfig = Field(default_factory=ViralAnalysisConfig)
+    selected_topic_title: str | None = None
 
 
 class RunWorkflowRequest(BaseModel):
@@ -133,6 +134,14 @@ class RunWorkflowRequest(BaseModel):
     # user explicitly clicks "运行工作流" or "执行下一步".
     execution_mode: Literal["auto", "step", "manual"] = "auto"
     viral_analysis: ViralAnalysisConfig = Field(default_factory=ViralAnalysisConfig)
+    selected_topic_title: str | None = None
+
+
+class StepWorkflowRequest(BaseModel):
+    selected_topic_title: str | None = None
+    # When set, rerun this stage and its downstream stages while preserving
+    # upstream checkpoints (e.g. rerun viral_analyst without rescanning news).
+    stage: str | None = None
 
 
 class GenerateScriptRequest(BaseModel):
