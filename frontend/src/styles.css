@@ -1393,15 +1393,28 @@ button {
 }
 
 .project-file-actions {
-  padding: 14px;
+  padding: 16px 18px 18px;
   display: flex;
   align-items: center;
-  gap: 10px;
   flex-wrap: wrap;
+  gap: 10px;
 }
 
-.project-file-actions .primary-button,
-.project-file-actions .ghost-button { min-width: 130px; }
+.project-file-actions button {
+  flex: 0 1 auto;
+  min-width: 132px;
+}
+
+@media (max-width: 560px) {
+  .project-file-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .project-file-actions button {
+    width: 100%;
+  }
+}
 
 .agent-dot.status-idle { background: #b4beb9; box-shadow: 0 0 0 4px rgba(180, 190, 185, 0.18); }
 .agent-dot.status-busy { background: #e09b39; box-shadow: 0 0 0 4px rgba(224, 155, 57, 0.16); }

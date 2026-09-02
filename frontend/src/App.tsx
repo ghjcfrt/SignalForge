@@ -1231,7 +1231,7 @@ function SettingsView({ status, currentRun, onImport, onBackendStateChange }: { 
         <div className="panel-heading tight">
           <div><h2>项目文件</h2><p>手动保存或恢复热点、产物和流水线进度。</p></div>
         </div>
-        <div className="mpt-actions">
+        <div className="project-file-actions">
           <button className="primary-button" type="button" onClick={handleExport}><FileText size={17} /><span>导出项目</span></button>
           <button className="ghost-button" type="button" onClick={() => fileInputRef.current?.click()}><RefreshCcw size={17} /><span>导入项目</span></button>
           <input ref={fileInputRef} type="file" accept="application/json,.json" hidden onChange={(event) => handleImport(event.target.files?.[0])} />
