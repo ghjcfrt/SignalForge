@@ -347,9 +347,9 @@ button {
 
 .settings-overview-grid {
   display: grid;
-  /* Keep the left column at the original half-width. The remaining space
-     after the fixed project card is intentionally left open. */
-  grid-template-columns: calc((100% - 18px) / 2) 420px;
+  /* Keep the original runtime/project-file sizing and append configuration
+     as a third card. */
+  grid-template-columns: calc((100% - 18px) / 2) 420px 420px;
   gap: 18px;
   align-items: stretch;
 }
@@ -361,6 +361,43 @@ button {
 .project-settings-panel {
   display: grid;
   grid-template-rows: auto minmax(118px, 1fr);
+}
+
+.project-config-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: stretch;
+  padding-bottom: 18px;
+}
+
+.project-config-panel .env-category-actions {
+  flex-direction: column;
+  margin: 14px 0 0;
+  flex: 1;
+  justify-content: center;
+  padding: 0;
+  border-top: 0;
+}
+
+.project-config-panel .env-category-actions button {
+  width: 300px;
+  max-width: 100%;
+  align-self: center;
+  justify-content: center;
+  height: 42px;
+  min-height: 42px;
+  padding: 0 10px;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  border-color: rgba(15, 159, 134, 0.25);
+  background: rgba(230, 247, 243, 0.75);
+  color: #08705f;
+}
+
+.project-config-panel .env-category-actions button:hover {
+  background: rgba(210, 241, 234, 0.95);
+  border-color: rgba(15, 159, 134, 0.45);
 }
 
 .settings-management-grid {
@@ -546,6 +583,11 @@ button {
   color: #8a6800;
 }
 
+.pipeline-actions .run-state.failed {
+  background: #fff1ee;
+  color: #9c3d31;
+}
+
 .pipeline-grid {
   padding: 16px;
   display: grid;
@@ -569,13 +611,17 @@ button {
 }
 
 .stage-card.active {
-  border-color: rgba(233, 76, 61, 0.36);
-  background: #fff7f5;
+  border-color: rgba(224, 155, 57, 0.48);
+  background: #fffaf0;
 }
 
 .stage-card.failed {
   border-color: rgba(233, 76, 61, 0.38);
   background: #fff1ee;
+}
+
+.stage-card.failed .stage-foot {
+  color: #9c3d31;
 }
 
 .stage-head,
@@ -1073,11 +1119,22 @@ button {
 .mpt-result {
   min-width: 0;
   padding: 10px 12px;
-  border: 1px solid rgba(233, 76, 61, 0.22);
+  border: 1px solid rgba(224, 155, 57, 0.32);
   border-radius: 8px;
-  color: #9c3d31;
-  background: #fff1ee;
+  color: #8a6800;
+  background: #fff8d8;
   font-size: 13px;
+}
+
+.operator-cover-preview {
+  display: block;
+  width: min(280px, 100%);
+  max-height: 500px;
+  object-fit: contain;
+  margin: 14px 0 18px;
+  border: 1px solid var(--line, #28435f);
+  border-radius: 12px;
+  background: #071426;
 }
 
 .mpt-result.done {
@@ -1450,6 +1507,134 @@ button {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.env-settings-panel {
+  margin-top: 16px;
+}
+
+.settings-page-shell.subpage::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(15, 18, 17, 0.48);
+}
+
+.settings-page-shell.subpage > .env-settings-panel {
+  position: fixed;
+  z-index: 21;
+  top: 50%;
+  left: 50%;
+  width: min(760px, calc(100vw - 48px));
+  max-height: 86vh;
+  margin: 0;
+  overflow: auto;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 24px 80px rgba(15, 18, 17, 0.3);
+}
+
+.settings-page-shell.subpage > .env-settings-panel .panel-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.env-category-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.env-settings-panel[data-category="ai"] .timeout-field:nth-child(3),
+.env-settings-panel[data-category="ai"] .timeout-field:nth-child(n+5) { display: none; }
+.env-settings-panel[data-category="ai"] .env-advanced { display: none; }
+.env-settings-panel[data-category="other"] .timeout-field:nth-child(1),
+.env-settings-panel[data-category="other"] .timeout-field:nth-child(2),
+.env-settings-panel[data-category="other"] .timeout-field:nth-child(4),
+.env-settings-panel[data-category="other"] .timeout-field:nth-child(5),
+.env-settings-panel[data-category="other"] .env-advanced { display: none; }
+.env-settings-panel[data-category="optional"] .timeout-field:nth-child(-n+4),
+.env-settings-panel[data-category="optional"] .timeout-field:nth-child(6),
+.env-settings-panel[data-category="optional"] .timeout-field:nth-child(7),
+.env-settings-panel[data-category="optional"] .timeout-field:nth-child(8),
+.env-settings-panel[data-category="optional"] .directory-field { display: none; }
+.env-settings-panel[data-category="optional"] .env-advanced { display: block; }
+
+.project-settings-panel .env-category-actions {
+  margin: 14px;
+  justify-content: flex-end;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.env-settings-panel input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: #fbfdfb;
+}
+
+.env-settings-panel input:focus {
+  outline: 2px solid rgba(15, 159, 134, 0.2);
+  border-color: var(--accent);
+}
+
+.directory-picker-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 86px;
+}
+
+.directory-value {
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directory-picker-row .ghost-button {
+  flex: 0 0 auto;
+  min-width: 140px;
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.env-settings-panel small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.env-advanced {
+  margin: 0 14px 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.env-advanced summary {
+  padding: 8px 0;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.mpt-result.failed {
+  color: #9c3d31;
+  border-color: rgba(233, 76, 61, 0.22);
+  background: #fff1ee;
 }
 
 .project-file-actions {
@@ -2006,7 +2191,7 @@ button {
 
 @media (max-width: 920px) {
   .settings-overview-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .settings-management-grid {
@@ -2102,6 +2287,12 @@ button {
   width: 20px;
   height: 20px;
   cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .settings-overview-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .topic-check input {

@@ -51,7 +51,7 @@
 ### 2.3 运行设计
 
 - 没有 `AI_API_KEY` 时使用本地模板回退，实时热点和在线模型能力可通过配置在线服务启用。
-- 热点抓取和模型调用分别支持超时设置，`0` 表示不限时；设置可在前端保存到 `workspaces/runtime-settings.json`。
+- 热点抓取和模型调用分别支持超时设置，`0` 表示不限时；视频剪辑员的 MoneyPrinterTurbo 渲染阶段始终不限时。设置可在前端保存到 `workspaces/runtime-settings.json`。
 - 任务状态包括 `queued`、`running`、`completed` 和 `failed`。
 - 任务会记录当前阶段和错误信息，并支持通过恢复接口从检查点继续。
 - 服务启动时会加载已保存的运行状态，方便展演过程中保存和恢复项目。

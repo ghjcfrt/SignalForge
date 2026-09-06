@@ -3,11 +3,11 @@ from functools import lru_cache
 from pathlib import Path
 from threading import RLock
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from backend.app.schemas import TimeoutSettings
+from backend.app.schemas import EnvSettings, EnvSettingsUpdate, OutputDirectorySettings, SecretSetting, TimeoutSettings
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -86,8 +86,9 @@ def get_settings() -> Settings:
     settings = Settings()
     with _RUNTIME_SETTINGS_LOCK:
         try:
-            saved = TimeoutSettings.model_validate_json(RUNTIME_SETTINGS_PATH.read_text(encoding="utf-8"))
-        except (FileNotFoundError, OSError, ValueError):
+            payload = json.loads(RUNTIME_SETTINGS_PATH.read_text(encoding="utf-8"))
+            saved = TimeoutSettings.model_validate(payload)
+        except (FileNotFoundError, OSError, ValueError, TypeError):
             saved = None
     if saved:
         settings.news_fetch_timeout_seconds = saved.news_fetch_timeout_seconds
@@ -105,6 +106,28 @@ def get_timeout_settings() -> TimeoutSettings:
     )
 
 
+def get_output_directory_settings() -> OutputDirectorySettings:
+    with _RUNTIME_SETTINGS_LOCK:
+        try:
+            payload = json.loads(RUNTIME_SETTINGS_PATH.read_text(encoding="utf-8"))
+            return OutputDirectorySettings.model_validate(payload.get("output_directories", payload))
+        except (FileNotFoundError, OSError, ValueError, TypeError):
+            return OutputDirectorySettings()
+
+
+def update_output_directory_settings(value: OutputDirectorySettings) -> OutputDirectorySettings:
+    # Preserve timeout settings in the shared runtime-settings file.
+    with _RUNTIME_SETTINGS_LOCK:
+        RUNTIME_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            payload = json.loads(RUNTIME_SETTINGS_PATH.read_text(encoding="utf-8"))
+        except (FileNotFoundError, OSError, ValueError):
+            payload = {}
+        payload["output_directories"] = value.model_dump()
+        RUNTIME_SETTINGS_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return value
+
+
 def update_timeout_settings(value: TimeoutSettings) -> TimeoutSettings:
     settings = get_settings()
     settings.news_fetch_timeout_seconds = value.news_fetch_timeout_seconds
@@ -112,8 +135,72 @@ def update_timeout_settings(value: TimeoutSettings) -> TimeoutSettings:
     settings.workflow_timeout_seconds = value.workflow_timeout_seconds
     with _RUNTIME_SETTINGS_LOCK:
         RUNTIME_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        RUNTIME_SETTINGS_PATH.write_text(
-            json.dumps(value.model_dump(), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        try:
+            payload = json.loads(RUNTIME_SETTINGS_PATH.read_text(encoding="utf-8"))
+        except (FileNotFoundError, OSError, ValueError):
+            payload = {}
+        payload.update(value.model_dump())
+        RUNTIME_SETTINGS_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return get_timeout_settings()
+
+
+_ENV_FIELDS = {
+    "ai_api_key": "AI_API_KEY",
+    "ai_base_url": "AI_BASE_URL",
+    "ai_model": "AI_MODEL",
+    "mpt_pexels_api_key": "MPT_PEXELS_API_KEY",
+    "backend_port": "BACKEND_PORT",
+    "socialdatax_api_key": "SOCIALDATAX_API_KEY",
+    "socialdatax_base_url": "SOCIALDATAX_BASE_URL",
+    "socialdatax_timeout_seconds": "SOCIALDATAX_TIMEOUT_SECONDS",
+    "tushare_token": "TUSHARE_TOKEN",
+    "tavily_api_key": "TAVILY_API_KEY",
+    "serpapi_key": "SERPAPI_KEY",
+}
+_SECRET_FIELDS = {"ai_api_key", "mpt_pexels_api_key", "socialdatax_api_key", "tushare_token", "tavily_api_key", "serpapi_key"}
+
+
+def _secret_setting(value: str | None) -> SecretSetting:
+    if not value:
+        return SecretSetting()
+    if len(value) > 8:
+        preview = f"{value[:4]}{'*' * max(4, len(value) - 8)}{value[-4:]}"
+    elif len(value) >= 4:
+        preview = f"{value[:2]}{'*' * max(2, len(value) - 4)}{value[-2:]}"
+    else:
+        preview = "*" * len(value)
+    return SecretSetting(configured=True, preview=preview)
+
+
+def get_env_settings() -> EnvSettings:
+    settings = get_settings()
+    return EnvSettings(
+        ai_api_key=_secret_setting(settings.ai_api_key),
+        ai_base_url=settings.ai_base_url,
+        ai_model=settings.ai_model or "",
+        mpt_pexels_api_key=_secret_setting(settings.mpt_pexels_api_key),
+        backend_port=settings.backend_port,
+        socialdatax_api_key=_secret_setting(settings.socialdatax_api_key),
+        socialdatax_base_url=settings.socialdatax_base_url,
+        socialdatax_timeout_seconds=settings.socialdatax_timeout_seconds,
+        tushare_token=_secret_setting(settings.tushare_token),
+        tavily_api_key=_secret_setting(settings.tavily_api_key),
+        serpapi_key=_secret_setting(settings.serpapi_key),
+    )
+
+
+def update_env_settings(value: EnvSettingsUpdate) -> EnvSettings:
+    """Persist editable values to .env and reload settings for this process."""
+    ROOT_DIR.joinpath(".env").touch(exist_ok=True)
+    data = value.model_dump(exclude_unset=True)
+    for field, env_name in _ENV_FIELDS.items():
+        if field not in data or data[field] is None:
+            continue
+        # Empty secret values intentionally leave the existing secret intact;
+        # this lets the UI submit a blank field without erasing credentials.
+        if field in _SECRET_FIELDS and not str(data[field]).strip():
+            continue
+        set_key(str(ROOT_DIR / ".env"), env_name, str(data[field]))
+    load_dotenv(ROOT_DIR / ".env", override=True)
+    get_settings.cache_clear()
+    return get_env_settings()

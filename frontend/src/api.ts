@@ -10,9 +10,11 @@ import type {
   ViralAnalysisConfig,
   Topic,
   WorkflowRun,
-  TimeoutSettings
+  TimeoutSettings,
+  EnvSettings
   ,StockAnalysisResult
 } from "./types";
+import type { OutputDirectorySettings } from "./types";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -55,6 +57,32 @@ export function updateTimeoutSettings(payload: TimeoutSettings) {
 
 export function fetchAgents() {
   return request<Agent[]>("/api/agents");
+}
+
+export function fetchOutputDirectorySettings() {
+  return request<OutputDirectorySettings>("/api/settings/output-directories");
+}
+
+export function updateOutputDirectorySettings(payload: OutputDirectorySettings) {
+  return request<OutputDirectorySettings>("/api/settings/output-directories", {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function selectDirectory() {
+  return request<{ path: string | null }>("/api/local/select-directory");
+}
+
+export function fetchEnvSettings() {
+  return request<EnvSettings>("/api/settings/env");
+}
+
+export function updateEnvSettings(payload: Record<string, string | number | null>) {
+  return request<EnvSettings>("/api/settings/env", {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
 }
 
 export function runAgent(agentId: string, payload: { prompt?: string; settings?: Record<string, unknown> }) {

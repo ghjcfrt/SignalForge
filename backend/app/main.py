@@ -1,13 +1,18 @@
 import json
 import asyncio
+import contextlib
+import time
+from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.agents import AGENTS, ensure_agent_workspaces
-from backend.app.config import get_settings, get_timeout_settings, update_timeout_settings
+from backend.app.config import get_env_settings, get_output_directory_settings, get_settings, get_timeout_settings, update_env_settings, update_output_directory_settings, update_timeout_settings
+from backend.app.directory_picker import directory_picker
 from backend.app.llm import LlmGateway
 from backend.app.schemas import (
     ApiStatus,
@@ -22,6 +27,9 @@ from backend.app.schemas import (
     StockAnalysisRequest,
     StockAnalysisResult,
     TimeoutSettings,
+    OutputDirectorySettings,
+    EnvSettings,
+    EnvSettingsUpdate,
     StepWorkflowRequest,
 )
 from backend.app.workflows import (
@@ -38,6 +46,7 @@ from backend.app.workflows import (
     reset_workflow_from_stage,
     WORKFLOW_STAGES,
     run_agent,
+    RUNS,
     _checkpoint,
     _log,
 )
@@ -109,6 +118,33 @@ async def timeout_settings_update(payload: TimeoutSettings) -> TimeoutSettings:
     return update_timeout_settings(payload)
 
 
+@app.get("/api/settings/output-directories", response_model=OutputDirectorySettings)
+async def output_directories() -> OutputDirectorySettings:
+    return get_output_directory_settings()
+
+
+@app.put("/api/settings/output-directories", response_model=OutputDirectorySettings)
+async def output_directories_update(payload: OutputDirectorySettings) -> OutputDirectorySettings:
+    return update_output_directory_settings(payload)
+
+
+@app.get("/api/local/select-directory")
+async def select_directory() -> dict[str, str | None]:
+    """Open the native directory chooser on the machine running the API."""
+    path = await asyncio.to_thread(directory_picker.pick)
+    return {"path": path}
+
+
+@app.get("/api/settings/env", response_model=EnvSettings)
+async def env_settings() -> EnvSettings:
+    return get_env_settings()
+
+
+@app.put("/api/settings/env", response_model=EnvSettings)
+async def env_settings_update(payload: EnvSettingsUpdate) -> EnvSettings:
+    return update_env_settings(payload)
+
+
 @app.get("/api/agents", response_model=list[Agent])
 async def agents() -> list[Agent]:
     return AGENTS
@@ -163,17 +199,46 @@ async def workflow(request: RunWorkflowRequest) -> WorkflowRun:
 
 
 async def _execute_workflow(run: WorkflowRun, *, stop_after_stage: str | None = None) -> None:
+    runner: asyncio.Task | None = None
     try:
         timeout = get_settings().workflow_timeout_seconds
-        runner = run_hot_video_workflow(
+        runner = asyncio.create_task(run_hot_video_workflow(
             run.seed,
             get_settings(),
             existing=run,
             stop_after_stage=stop_after_stage,
             selected_topic_title=run.selected_topic_title,
-        )
+        ))
         if timeout > 0:
-            await asyncio.wait_for(runner, timeout=timeout)
+            # The workflow limit applies to the planning stages, but must not
+            # terminate the video editor. MoneyPrinterTurbo can spend an
+            # unbounded amount of time installing dependencies, downloading
+            # footage, synthesising audio and encoding the final video.
+            deadline = time.monotonic() + timeout
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    if run.current_stage == "video_editor":
+                        await runner
+                        break
+                    runner.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await runner
+                    raise asyncio.TimeoutError
+                try:
+                    await asyncio.wait_for(asyncio.shield(runner), timeout=remaining)
+                    break
+                except asyncio.TimeoutError:
+                    # If the editor started as the deadline elapsed, hand it
+                    # an unlimited window; otherwise enforce the workflow
+                    # timeout and retain the normal resumable checkpoint.
+                    if run.current_stage == "video_editor":
+                        await runner
+                        break
+                    runner.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await runner
+                    raise
         else:
             await runner
     except asyncio.TimeoutError:
@@ -187,6 +252,10 @@ async def _execute_workflow(run: WorkflowRun, *, stop_after_stage: str | None = 
         _log(run, "工作流超过总时限，已停止并保留检查点", stage=stage, level="error", detail=run.error)
         _checkpoint(run)
     except asyncio.CancelledError:
+        if runner is not None and not runner.done():
+            runner.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await runner
         run.status = "paused"
         run.resumable = True
         run.completed_at = None
@@ -225,6 +294,20 @@ async def workflow_resume(run_id: str) -> WorkflowRun:
     task = asyncio.create_task(_execute_workflow(run))
     WORKFLOW_TASKS[run_id] = task
     return run
+
+
+@app.get("/api/artifacts/preview")
+async def artifact_preview(path: str) -> FileResponse:
+    """Serve a generated local image for the in-app artifact preview."""
+    target = Path(path).expanduser().resolve()
+    workspace_root = Path(__file__).resolve().parents[2] / "workspaces"
+    try:
+        target.relative_to(workspace_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="产物路径不在工作区内") from exc
+    if target.suffix.lower() not in {".svg", ".png", ".jpg", ".jpeg", ".webp"} or not target.is_file():
+        raise HTTPException(status_code=404, detail="图片产物不存在")
+    return FileResponse(target)
 
 
 @app.post("/api/workflows/{run_id}/step", response_model=WorkflowRun)
@@ -290,6 +373,10 @@ async def workflow_import(file: UploadFile = File(...)) -> WorkflowRun:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"项目文件无效：{exc}") from exc
     run.id = f"imported-{uuid4().hex[:10]}"
+    # Imported projects must become the current/latest project in the
+    # dashboard; retaining the source timestamp lets an older run win the
+    # recency sort and makes the overview appear to reset to pending.
+    run.created_at = datetime.now().astimezone()
     _ensure_workflow_state(run)
     RUNS[run.id] = run
     Path(run.run_dir).mkdir(parents=True, exist_ok=True)
@@ -304,4 +391,6 @@ async def moneyprinterturbo_status() -> MoneyPrinterTurboStatus:
 
 @app.post("/api/video/moneyprinterturbo/run", response_model=MoneyPrinterTurboRunResult)
 async def moneyprinterturbo_run(request: MoneyPrinterTurboRequest) -> MoneyPrinterTurboRunResult:
+    if not request.output_dir:
+        request.output_dir = get_output_directory_settings().video_output_dir.strip() or None
     return await run_moneyprinterturbo(request, get_settings())

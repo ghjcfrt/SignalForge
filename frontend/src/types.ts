@@ -36,6 +36,30 @@ export interface TimeoutSettings {
   workflow_timeout_seconds: number;
 }
 
+export interface OutputDirectorySettings {
+  video_output_dir: string;
+  operator_output_dir: string;
+}
+
+export interface SecretSetting {
+  configured: boolean;
+  preview: string | null;
+}
+
+export interface EnvSettings {
+  ai_api_key: SecretSetting;
+  ai_base_url: string;
+  ai_model: string;
+  mpt_pexels_api_key: SecretSetting;
+  backend_port: number;
+  socialdatax_api_key: SecretSetting;
+  socialdatax_base_url: string;
+  socialdatax_timeout_seconds: number;
+  tushare_token: SecretSetting;
+  tavily_api_key: SecretSetting;
+  serpapi_key: SecretSetting;
+}
+
 export interface ViralAnalysisConfig {
   source: "socialdatax" | "manual";
   enabled: boolean;
@@ -175,4 +199,8 @@ export interface ControlResult {
   ok: boolean;
   message: string;
   status?: SystemStatus;
+}
+
+export interface DirectorySelection {
+  path: string;
 }

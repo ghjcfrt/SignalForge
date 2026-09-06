@@ -58,7 +58,7 @@ Copy-Item .env.example .env
 | `BACKEND_PORT` | 否 | 默认 `8017` |
 | `NEWS_FETCH_TIMEOUT_SECONDS` | 否 | 热点抓取超时；`0` 表示不限时，默认 `90` |
 | `MODEL_TIMEOUT_SECONDS` | 否 | 模型调用超时；`0` 表示不限时，默认 `30` |
-| `WORKFLOW_TIMEOUT_SECONDS` | 否 | 完整工作流总时限；`0` 表示不限时，默认 `300` |
+| `WORKFLOW_TIMEOUT_SECONDS` | 否 | 完整工作流总时限；`0` 表示不限时，默认 `300`（视频剪辑员渲染阶段始终不限时） |
 | `SOCIALDATAX_API_KEY` | 爆款分析可选 | SocialDataX API Key；从 [SocialDataX API Key 页面](https://socialdatax.com/dashboard/api-keys) 获取 |
 | `SOCIALDATAX_BASE_URL` | 否 | 默认 `https://mcp.socialdatax.com` |
 | `SOCIALDATAX_TIMEOUT_SECONDS` | 否 | SocialDataX 请求超时；`0` 表示不限时，默认 `60` |

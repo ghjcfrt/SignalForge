@@ -78,8 +78,15 @@ foreach ($port in @($backendPort, $frontendPort)) {
 
 $uv = Get-UvCommand
 if (-not (Test-ProjectListener $backendPort)) {
-    $backendCommand = "$uv run uvicorn backend.app.main:app --reload --host 127.0.0.1 --port $backendPort"
-    Start-Process powershell -WorkingDirectory $workspaceRoot -ArgumentList @("-NoExit", "-Command", $backendCommand) | Out-Null
+    # Prefer the project's virtualenv directly. This is reliable when launched
+    # by double-click, where the user's interactive PATH may not be available.
+    $venvPython = Join-Path $workspaceRoot ".venv\Scripts\python.exe"
+    if (Test-Path -LiteralPath $venvPython) {
+        $backendCommand = "& '$venvPython' -m uvicorn backend.app.main:app --reload --host 127.0.0.1 --port $backendPort"
+    } else {
+        $backendCommand = "$uv run uvicorn backend.app.main:app --reload --host 127.0.0.1 --port $backendPort"
+    }
+    Start-Process powershell -WorkingDirectory $workspaceRoot -ArgumentList @("-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-NoExit", "-Command", $backendCommand) | Out-Null
 }
 if (-not (Get-FrontendListener $frontendPort)) {
     Stop-StaleFrontend $frontendPort
@@ -96,7 +103,7 @@ if (-not (Get-FrontendListener $frontendPort)) {
         }
         $frontendCommand = "& '$bundledNode' node_modules/vite/bin/vite.js --root '$workspaceRoot\frontend' --host 127.0.0.1 --port $frontendPort"
     }
-    Start-Process powershell -WorkingDirectory (Join-Path $workspaceRoot "frontend") -ArgumentList @("-NoExit", "-Command", $frontendCommand) | Out-Null
+    Start-Process powershell -WorkingDirectory (Join-Path $workspaceRoot "frontend") -ArgumentList @("-NoLogo", "-NoProfile", "-NoExit", "-Command", $frontendCommand) | Out-Null
 }
 
 Start-Sleep -Seconds 2

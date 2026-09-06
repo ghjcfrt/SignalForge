@@ -82,6 +82,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_ROOT,
         help=f"MoneyPrinterTurbo installation directory (default: {DEFAULT_ROOT})",
     )
+    parser.add_argument("--output-dir", type=Path, default=None, help="copy final videos to this directory")
     parser.add_argument(
         "cli_args",
         nargs=argparse.REMAINDER,
@@ -124,10 +125,28 @@ def ensure_project(root: Path) -> None:
             PROJECT_ARCHIVE_URL,
             headers={"User-Agent": "MoneyPrinterTurbo-Agent-Skill"},
         )
-        with urllib.request.urlopen(request, timeout=120) as response:
-            # Stream the archive to avoid holding a second full copy in memory.
-            with archive_path.open("wb") as archive_file:
-                shutil.copyfileobj(response, archive_file)
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                # Stream the archive to avoid holding a second full copy in memory.
+                with archive_path.open("wb") as archive_file:
+                    shutil.copyfileobj(response, archive_file)
+        except (urllib.error.URLError, TimeoutError) as exc:
+            # Some Windows Python builds cannot complete GitHub's TLS
+            # handshake even though the system curl client can.  Retry via
+            # curl before reporting an installation failure.
+            curl = shutil.which("curl.exe") or shutil.which("curl")
+            if not curl:
+                raise SkillError(f"GitHub download failed: {exc}") from exc
+            completed = subprocess.run(
+                [curl, "-L", "--fail", "--silent", "--show-error", "--max-time", "120",
+                 "-A", "MoneyPrinterTurbo-Agent-Skill", "-o", str(archive_path), PROJECT_ARCHIVE_URL],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if completed.returncode != 0:
+                detail = (completed.stderr or str(exc)).strip()[-1000:]
+                raise SkillError(f"GitHub download failed via urllib and curl: {detail}") from exc
         with zipfile.ZipFile(archive_path) as archive:
             _safe_extract(archive, temp_dir)
 
@@ -477,6 +496,7 @@ def generate_video(
     root: Path,
     subject: str,
     cli_args: list[str],
+    output_dir: Path | None = None,
 ) -> tuple[list[Path], Path, Path, Path]:
     """Run one traceable CLI task and return only its final video files."""
     uv = shutil.which("uv")
@@ -577,6 +597,15 @@ def generate_video(
             },
         )
         raise SkillError(error)
+    if output_dir:
+        destination = output_dir.expanduser().resolve()
+        destination.mkdir(parents=True, exist_ok=True)
+        copied: list[Path] = []
+        for video in videos:
+            target = destination / video.name
+            shutil.copy2(video, target)
+            copied.append(target.resolve())
+        videos = copied
     result_path = write_result_manifest(
         root,
         {
@@ -621,7 +650,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return report_invalid_pexels_config()
         videos, task_dir, log_path, result_path = generate_video(
-            root, args.subject, args.cli_args
+            root, args.subject, args.cli_args, args.output_dir
         )
     except (OSError, SkillError, urllib.error.URLError, zipfile.BadZipFile) as exc:
         print(f"MPT_ERROR={exc}", file=sys.stderr)

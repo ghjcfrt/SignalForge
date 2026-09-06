@@ -44,6 +44,52 @@ class TimeoutSettings(BaseModel):
     workflow_timeout_seconds: int = Field(default=300, ge=0, le=86400)
 
 
+class OutputDirectorySettings(BaseModel):
+    """User-selectable destinations for generated deliverables."""
+
+    video_output_dir: str = ""
+    operator_output_dir: str = ""
+
+
+class SecretSetting(BaseModel):
+    """A secret value is never returned in full to the browser."""
+
+    configured: bool = False
+    preview: str | None = None
+
+
+class EnvSettings(BaseModel):
+    """Safe, user-editable subset of the .env runtime configuration."""
+
+    ai_api_key: SecretSetting = Field(default_factory=SecretSetting)
+    ai_base_url: str = ""
+    ai_model: str = ""
+    mpt_pexels_api_key: SecretSetting = Field(default_factory=SecretSetting)
+    backend_port: int = Field(default=8017, ge=1, le=65535)
+    socialdatax_api_key: SecretSetting = Field(default_factory=SecretSetting)
+    socialdatax_base_url: str = ""
+    socialdatax_timeout_seconds: int = Field(default=60, ge=0)
+    tushare_token: SecretSetting = Field(default_factory=SecretSetting)
+    tavily_api_key: SecretSetting = Field(default_factory=SecretSetting)
+    serpapi_key: SecretSetting = Field(default_factory=SecretSetting)
+
+
+class EnvSettingsUpdate(BaseModel):
+    """Update payload; secret fields are only changed when non-empty."""
+
+    ai_api_key: str | None = None
+    ai_base_url: str | None = None
+    ai_model: str | None = None
+    mpt_pexels_api_key: str | None = None
+    backend_port: int | None = Field(default=None, ge=1, le=65535)
+    socialdatax_api_key: str | None = None
+    socialdatax_base_url: str | None = None
+    socialdatax_timeout_seconds: int | None = Field(default=None, ge=0)
+    tushare_token: str | None = None
+    tavily_api_key: str | None = None
+    serpapi_key: str | None = None
+
+
 class ViralAnalysisConfig(BaseModel):
     """How the viral analyst should obtain its analysis brief."""
 

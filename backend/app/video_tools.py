@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import subprocess
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -31,6 +32,7 @@ class MoneyPrinterTurboStatus(BaseModel):
 class MoneyPrinterTurboRequest(BaseModel):
     subject: str
     extra_args: list[str] = []
+    output_dir: str | None = None
 
 
 class MoneyPrinterTurboRunResult(BaseModel):
@@ -66,7 +68,7 @@ def mpt_status(settings: Settings) -> MoneyPrinterTurboStatus:
         upstream="https://github.com/harry0703/MoneyPrinterTurbo",
         license="MIT",
         missing_env=missing_env,
-        default_command='uv run --no-project --python 3.11 python mpt_agent.py --subject "<视频主题或脚本>"',
+        default_command='uv run --no-project --python 3.11.15 python mpt_agent.py --subject "<视频主题或脚本>"',
     )
 
 
@@ -102,7 +104,7 @@ def _parse_mpt_output(stdout: str) -> dict[str, str | list[str]]:
 async def run_moneyprinterturbo(
     request: MoneyPrinterTurboRequest,
     settings: Settings,
-    timeout_seconds: int = 1200,
+    timeout_seconds: int | None = 0,
 ) -> MoneyPrinterTurboRunResult:
     if not MPT_HELPER_FILE.exists():
         return MoneyPrinterTurboRunResult(
@@ -120,26 +122,37 @@ async def run_moneyprinterturbo(
         "run",
         "--no-project",
         "--python",
-        "3.11",
+        # Pin the fully-qualified patch release.  On this machine uv's
+        # `3.11` minor-version junction is stale, while the installed
+        # 3.11.15 interpreter is valid.
+        "3.11.15",
         "python",
         "mpt_agent.py",
         "--subject",
         request.subject,
+        *( ["--output-dir", request.output_dir] if request.output_dir else [] ),
         *request.extra_args,
     ]
-    process = await asyncio.create_subprocess_exec(
-        *command,
-        cwd=MPT_SKILL_DIR,
-        env=_mpt_env(settings),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-
     try:
-        stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
-    except asyncio.TimeoutError:
-        process.kill()
-        await process.wait()
+        # Video rendering is intentionally unbounded by default.  It may
+        # involve dependency installation, downloads, TTS and encoding, all
+        # of which can legitimately exceed a fixed request timeout.  Keep an
+        # explicit timeout available for callers that need a hard cap.
+        # Do not use asyncio.create_subprocess_exec here: uvicorn may run
+        # under Windows' SelectorEventLoop (notably with --reload), whose
+        # subprocess transport raises NotImplementedError.  Running the
+        # blocking subprocess in a worker works with either loop policy.
+        run_options = {
+            "cwd": MPT_SKILL_DIR,
+            "env": _mpt_env(settings),
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "check": False,
+        }
+        if timeout_seconds is not None and timeout_seconds > 0:
+            run_options["timeout"] = timeout_seconds
+        completed = await asyncio.to_thread(subprocess.run, command, **run_options)
+    except subprocess.TimeoutExpired:
         return MoneyPrinterTurboRunResult(
             exit_code=124,
             status="timeout",
@@ -148,12 +161,12 @@ async def run_moneyprinterturbo(
             video_files=[],
         )
 
-    stdout = stdout_bytes.decode("utf-8", errors="replace")
-    stderr = stderr_bytes.decode("utf-8", errors="replace")
+    stdout = (completed.stdout or b"").decode("utf-8", errors="replace")
+    stderr = (completed.stderr or b"").decode("utf-8", errors="replace")
     parsed = _parse_mpt_output(stdout)
-    status = "completed" if process.returncode == 0 else "needs_input" if process.returncode == 10 else "failed"
+    status = "completed" if completed.returncode == 0 else "needs_input" if completed.returncode == 10 else "failed"
     return MoneyPrinterTurboRunResult(
-        exit_code=process.returncode or 0,
+        exit_code=completed.returncode or 0,
         status=status,
         stdout=stdout,
         stderr=stderr,
