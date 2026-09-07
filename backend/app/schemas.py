@@ -102,6 +102,12 @@ class RunAgentRequest(BaseModel):
     agent_id: str
     prompt: str = ""
     settings: dict[str, object] = Field(default_factory=dict)
+    # When an employee is run from an open project, persist its independent
+    # workbench result with that project so import/export keeps the result.
+    project_run_id: str | None = None
+    # Independent workbenches own their execution budget.  This is deliberately
+    # separate from the console's persisted workflow timeout.
+    timeout_seconds: int = Field(default=300, ge=0, le=86400)
 
 
 class TopicSeed(BaseModel):
@@ -112,6 +118,7 @@ class TopicSeed(BaseModel):
     )
     audience: str = Field(default="关注 AI 工具的一线创作者和创业者")
     duration_seconds: int = Field(default=110, ge=30, le=240)
+    video_aspect: Literal["vertical", "horizontal"] = "vertical"
 
 
 class SourceEvidence(BaseModel):
@@ -145,6 +152,13 @@ class AgentOutput(BaseModel):
     created_at: datetime
 
 
+class AgentTaskLog(BaseModel):
+    timestamp: datetime
+    level: Literal["info", "success", "error"] = "info"
+    message: str
+    artifact_path: str | None = None
+
+
 class WorkflowLog(BaseModel):
     timestamp: datetime
     level: Literal["info", "warning", "error"] = "info"
@@ -159,6 +173,10 @@ class WorkflowRun(BaseModel):
     seed: TopicSeed
     topics: list[Topic]
     outputs: list[AgentOutput]
+    # Results produced in an employee's standalone workbench.  They are kept
+    # separate from staged pipeline outputs while still belonging to the
+    # project's import/export boundary.
+    standalone_outputs: list[AgentOutput] = Field(default_factory=list)
     run_dir: str
     created_at: datetime
     completed_at: datetime | None = None

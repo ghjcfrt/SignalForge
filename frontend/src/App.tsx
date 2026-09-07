@@ -7,6 +7,8 @@ import {
   CircleDot,
   ChartNoAxesCombined,
   Copy,
+  ChevronLeft,
+  ChevronRight,
   Cpu,
   ExternalLink,
   FileText,
@@ -28,8 +30,11 @@ import {
   Video,
   Wand2
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   fetchAgents,
+  fetchAgentLogs,
   fetchWorkflow,
   fetchWorkflows,
   cancelWorkflow,
@@ -78,15 +83,25 @@ import type {
   ,ViralAnalysisConfig
   ,OutputDirectorySettings
   ,EnvSettings
+  ,AgentTaskLog
 } from "./types";
 
 type ViewId = (typeof navItems)[number]["id"];
+type AgentTaskStatus = "idle" | "running" | "completed" | "failed";
+
+const agentTaskStatusText: Record<AgentTaskStatus, string> = {
+  idle: "待调用",
+  running: "执行中",
+  completed: "已完成",
+  failed: "执行失败"
+};
 
 const defaultSeed: TopicSeed = {
   domain: "AI 圈",
   brief: "近期 AI 产品、模型、创业工具或内容生产热点",
   audience: "关注 AI 工具的一线创作者和创业者",
-  duration_seconds: 110
+  duration_seconds: 110,
+  video_aspect: "vertical"
 };
 
 const defaultTimeoutSettings: TimeoutSettings = {
@@ -108,6 +123,15 @@ const statusText = {
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
+}
+
+/** Render model-produced Markdown consistently across every result surface. */
+function MarkdownContent({ content, className }: { content: string; className?: string }) {
+  return (
+    <div className={cn("markdown-content", className)}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content || ""}</ReactMarkdown>
+    </div>
+  );
 }
 
 // A stale browser snapshot can outlive the backend filter. Keep collection
@@ -162,7 +186,7 @@ const viewMeta: Record<ViewId, { title: string; subtitle: string }> = {
   },
   radar: {
     title: "热点雷达",
-    subtitle: "给赵爽一个方向，快速形成可选题池。"
+    subtitle: "给热点监控员一个方向，快速形成可选题池。"
   },
   stocks: {
     title: "股票分析",
@@ -174,7 +198,7 @@ const viewMeta: Record<ViewId, { title: string; subtitle: string }> = {
   },
   editing: {
     title: "剪辑队列",
-    subtitle: "查看小李生成的画幅、配音、字幕、素材和导出方案。"
+    subtitle: "查看视频剪辑员生成的画幅、配音、字幕、素材和导出方案。"
   },
   engagement: {
     title: "互动回复",
@@ -185,7 +209,7 @@ const viewMeta: Record<ViewId, { title: string; subtitle: string }> = {
     subtitle: "检查模型、密钥变量、Base URL 和本地工作区约定。"
   },
   agent_hotspot_monitor: { title: "热点监控员", subtitle: "独立搜集、排序并核验热点候选。" },
-  agent_viral_analyst: { title: "爆款分析师", subtitle: "独立制定传播角度、结构和表达规则。" },
+  agent_viral_analyst: { title: "爆款分析师", subtitle: "独立分析爆款内容规律，拆解传播钩子、情绪冲突和受众动机。" },
   agent_copywriter: { title: "文案助手", subtitle: "独立生成短视频口播脚本。" },
   agent_video_editor: { title: "视频剪辑员", subtitle: "独立生成剪辑、字幕和配音方案。" },
   agent_operator: { title: "运营大师", subtitle: "独立生成发布、互动和复盘方案。" },
@@ -237,6 +261,40 @@ function ShellNav({
   shutdownComplete: boolean;
   onShutdown: () => void;
 }) {
+  const moreViewIds = new Set([
+    "agent_product_manager",
+    "agent_programmer",
+    "agent_stock_assistant",
+    "agent_healer",
+    "radar",
+    "stocks",
+    "editing",
+    "engagement"
+  ]);
+  const primaryItems = navItems.filter((item) => item.id !== "settings" && !moreViewIds.has(item.id));
+  const moreItems = navItems.filter((item) => moreViewIds.has(item.id));
+  const [moreOpen, setMoreOpen] = useState(() => moreViewIds.has(activeView));
+
+  useEffect(() => {
+    if (moreViewIds.has(activeView)) setMoreOpen(true);
+  }, [activeView]);
+
+  const renderNavItem = (item: (typeof navItems)[number], subItem = false) => {
+    const Icon = item.icon;
+    return (
+      <button
+        className={cn("nav-item", subItem && "nav-sub-item", activeView === item.id && "active")}
+        onClick={() => onViewChange(item.id)}
+        type="button"
+        aria-current={activeView === item.id ? "page" : undefined}
+        key={item.id}
+      >
+        <Icon size={subItem ? 17 : 18} />
+        <span>{item.label}</span>
+      </button>
+    );
+  };
+
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -247,26 +305,32 @@ function ShellNav({
         </div>
       </div>
 
-      <nav className="nav-list" aria-label="主导航">
-        {navItems.map((item, index) => {
-          const Icon = item.icon;
-          return (
-            <div key={item.id}>
-              {index === 1 && <div className="nav-section-label">流水线员工</div>}
-              {index === pipeline.length + 1 && <div className="nav-section-label">其他员工</div>}
-              <button
-                className={cn("nav-item", activeView === item.id && "active")}
-                onClick={() => onViewChange(item.id)}
-                type="button"
-                aria-current={activeView === item.id ? "page" : undefined}
-              >
-                <Icon size={18} />
-                <span>{item.label}</span>
-              </button>
+      <div className="nav-scroll-area">
+        <nav className="nav-list" aria-label="主导航">
+          <div className="nav-section-label">独立工作台</div>
+          {primaryItems.map((item) => renderNavItem(item))}
+        </nav>
+        <div className="nav-more-group">
+          <details
+            className="nav-collapsible"
+            open={moreOpen}
+            onToggle={(event) => setMoreOpen(event.currentTarget.open)}
+          >
+            <summary className="nav-collapse-summary">
+              <span>更多</span>
+              <ChevronRight size={15} aria-hidden="true" />
+            </summary>
+            <div className="nav-collapsible-items">
+              {moreItems.map((item) => renderNavItem(item, true))}
             </div>
-          );
-        })}
-      </nav>
+          </details>
+        </div>
+      </div>
+
+      <div className="sidebar-settings">
+        <div className="nav-divider" aria-hidden="true" />
+        {renderNavItem(navItems.find((item) => item.id === "settings")!)}
+      </div>
 
       <div className="boss-card">
         <span>实时 AI 工作台</span>
@@ -294,23 +358,27 @@ function TopBar({
   onRun: () => void;
 }) {
   const meta = viewMeta[activeView];
+  const isEmployeeView = activeView.startsWith("agent_");
+  const isConsoleView = activeView === "overview";
 
   return (
     <header className="topbar">
       <div>
-        <h1>{meta.title}</h1>
-        <p>{meta.subtitle}</p>
+        <h1>{isEmployeeView ? "独立工作台" : meta.title}</h1>
+        {!isEmployeeView && <p>{meta.subtitle}</p>}
       </div>
-      <div className="topbar-actions">
-        <div className={cn("api-pill", status?.mode === "live" ? "ok" : "warn")} title={status?.diagnostic ?? undefined}>
-          {status?.mode === "live" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-          <span>{status ? statusText[status.mode] : "检测中"}</span>
+        <div className="topbar-actions">
+          <div className={cn("api-pill", status?.mode === "live" ? "ok" : "warn")} title={status?.diagnostic ?? undefined}>
+            {status?.mode === "live" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+            <span>{status ? statusText[status.mode] : "检测中"}</span>
+          </div>
+          {isConsoleView && (
+            <button className="primary-button" onClick={onRun} disabled={running}>
+              {running ? <Loader2 className="spin" size={18} /> : <Play size={18} />}
+              <span>{running ? "运行中" : "运行工作流"}</span>
+            </button>
+          )}
         </div>
-        <button className="primary-button" onClick={onRun} disabled={running}>
-          {running ? <Loader2 className="spin" size={18} /> : <Play size={18} />}
-          <span>{running ? "运行中" : "运行工作流"}</span>
-        </button>
-      </div>
     </header>
   );
 }
@@ -367,7 +435,6 @@ function PipelineBoard({ run, running, onNew, onStep, onCancel, onRerun }: { run
                 <div className="stage-icon">
                   <Icon size={18} />
                 </div>
-                <span>{stage.owner}</span>
                 {run && !running && state !== "running" && <button className="ghost-button rerun-stage" type="button" onClick={() => onRerun(stage.agentId)}>重跑</button>}
               </div>
               <h3>{stage.title}</h3>
@@ -426,9 +493,19 @@ function SeedPanel({
           onChange={(event) => onChange({ ...seed, duration_seconds: Number(event.target.value) })}
         />
       </label>
+      <label>
+        <span>视频画幅</span>
+        <select
+          value={seed.video_aspect}
+          onChange={(event) => onChange({ ...seed, video_aspect: event.target.value as TopicSeed["video_aspect"] })}
+        >
+          <option value="vertical">竖版 1080 x 1920（9:16）</option>
+          <option value="horizontal">横版 1920 x 1080（16:9）</option>
+        </select>
+      </label>
       <div className="settings-handoff">
         <ChartNoAxesCombined size={16} />
-        <span>爆款分析师的开关、数据来源和分析依据已统一到左侧“爆款分析师”页面。</span>
+        <span>总控制台的爆款分析设置请前往“设置”页；<br />左侧员工页只影响对应独立工作台。</span>
       </div>
       <button className="ghost-button" onClick={onScript} disabled={scriptBusy}>
         {scriptBusy ? <Loader2 className="spin" size={17} /> : <Wand2 size={17} />}
@@ -464,8 +541,7 @@ function AgentRoster({ agents }: { agents: Agent[] }) {
               </div>
               <div className="agent-main">
                 <div>
-                  <strong>{agent.name}</strong>
-                  <span>{agent.title}</span>
+                  <strong>{agent.title}</strong>
                 </div>
                 <p>{agent.focus}</p>
               </div>
@@ -485,7 +561,7 @@ function TopicList({ run, topics, selectable, selectedTitle, onSelect }: { run?:
       <div className="panel-heading tight">
         <div>
           <h2>热点候选</h2>
-          <p>由赵爽初筛，星辰负责判断传播结构。不勾选则默认第一个。</p>
+          <p>由热点监控员初筛，爆款分析师负责判断传播结构。不勾选则默认第一个。</p>
         </div>
       </div>
       <div className="topic-list">
@@ -516,6 +592,12 @@ function TopicList({ run, topics, selectable, selectedTitle, onSelect }: { run?:
 }
 
 function OutputList({ outputs }: { outputs: AgentOutput[] }) {
+  const agentTitle = (agentId: string) => {
+    const pipelineStage = pipeline.find((stage) => stage.agentId === agentId);
+    if (pipelineStage) return pipelineStage.title;
+    return navItems.find((item) => item.id === `agent_${agentId}`)?.label ?? agentId;
+  };
+
   return (
     <section className="panel outputs-panel">
       <div className="panel-heading tight">
@@ -528,11 +610,10 @@ function OutputList({ outputs }: { outputs: AgentOutput[] }) {
         {outputs.map((output) => (
           <details className="output-item" key={`${output.agent_id}-${output.created_at}`}>
             <summary>
-              <span>{output.agent_name}</span>
-              <strong>{output.title}</strong>
+              <span>{agentTitle(output.agent_id)}</span>
               <small>{output.artifact_path}</small>
             </summary>
-            <pre>{output.content}</pre>
+            <MarkdownContent content={output.content} />
             {output.agent_id === "operator" && (() => {
               const match = output.content.match(/封面文件：([^\n]+)/);
               const coverPath = match?.[1]?.trim();
@@ -551,25 +632,18 @@ function OutputList({ outputs }: { outputs: AgentOutput[] }) {
   );
 }
 
-function SettingsStrip({ status }: { status: ApiStatus | null }) {
+function SettingsStrip({ status, collapsed, onToggle }: { status: ApiStatus | null; collapsed: boolean; onToggle: () => void }) {
   return (
-    <section className="settings-strip">
-      <div>
-        <span>Key Path</span>
-        <strong>{status?.key_preview ?? "未配置"}</strong>
-      </div>
-      <div>
-        <span>Base URL</span>
-        <strong>{status?.base_url ?? "https://api.openlux.ai/v1"}</strong>
-      </div>
-      <div>
-        <span>Model</span>
-        <strong>{status?.model ?? "中转站自动选择"}</strong>
-      </div>
-      <div>
-        <span>AI Health</span>
-        <strong>{status?.model_available ? "模型可用" : status?.diagnostic ?? "检查中"}</strong>
-      </div>
+    <section className={cn("settings-strip", collapsed && "collapsed")} aria-label="AI 运行状态">
+      {!collapsed && <div className="settings-strip-content">
+        <div><span>Key Path</span><strong>{status?.key_preview ?? "未配置"}</strong></div>
+        <div><span>Base URL</span><strong>{status?.base_url ?? "https://api.openlux.ai/v1"}</strong></div>
+        <div><span>Model</span><strong>{status?.model ?? "中转站自动选择"}</strong></div>
+        <div><span>AI Health</span><strong>{status?.model_available ? "模型可用" : status?.diagnostic ?? "检查中"}</strong></div>
+      </div>}
+      <button className="settings-strip-toggle" type="button" onClick={onToggle} aria-label={collapsed ? "展开 AI 运行状态" : "收起 AI 运行状态"} title={collapsed ? "展开 AI 运行状态" : "收起 AI 运行状态"}>
+        {collapsed ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+      </button>
     </section>
   );
 }
@@ -586,7 +660,7 @@ function RadarView({ topics, seed, onChange, onRun, running }: {
       <section className="panel action-panel">
         <div className="panel-heading">
           <div>
-            <h2>赵爽的热点雷达</h2>
+            <h2>热点监控员的热点雷达</h2>
             <p>输入领域和方向后，热点监控员会给出候选选题、热度、线索和风险。</p>
           </div>
           <button className="primary-button" onClick={onRun} disabled={running} type="button">
@@ -678,7 +752,7 @@ function EditingQueueView({ outputs, seed }: { outputs: AgentOutput[]; seed: Top
         <div className="panel-heading tight">
           <div>
             <h2>MoneyPrinterTurbo</h2>
-            <p>小李的专属剪辑能力，基于 MoneyPrinterTurbo。</p>
+            <p>视频剪辑员的专属剪辑能力，基于 MoneyPrinterTurbo。</p>
           </div>
           <span className={cn("run-state", mptStatus?.installed && "done")}>
             {mptStatus?.installed ? "installed" : "checking"}
@@ -726,7 +800,7 @@ function EditingQueueView({ outputs, seed }: { outputs: AgentOutput[]; seed: Top
         <div className="panel-heading tight">
           <div>
             <h2>剪辑与发布队列</h2>
-            <p>小李负责剪辑计划，尤道理负责发布策略；完整跑一次工作流后会出现队列。</p>
+            <p>视频剪辑员负责剪辑计划，运营大师负责发布策略；完整跑一次工作流后会出现队列。</p>
           </div>
         </div>
         <div className="queue-grid">
@@ -734,9 +808,9 @@ function EditingQueueView({ outputs, seed }: { outputs: AgentOutput[]; seed: Top
             <article className="queue-card" key={`${output.agent_id}-${output.created_at}`}>
               <div className="queue-icon">{output.agent_id === "video_editor" ? <Video size={18} /> : <Archive size={18} />}</div>
               <div>
-                <span>{output.agent_name}</span>
+                <span>{pipeline.find((stage) => stage.agentId === output.agent_id)?.title ?? navItems.find((item) => item.id === `agent_${output.agent_id}`)?.label ?? output.agent_id}</span>
                 <h3>{output.title}</h3>
-                <p>{output.content.split("\n").find((line) => line.startsWith("- ")) ?? "已生成可执行方案。"}</p>
+                <MarkdownContent content={output.content} className="queue-card-markdown" />
                 <small>{output.artifact_path}</small>
               </div>
             </article>
@@ -772,7 +846,7 @@ function AgentsView({ agents }: { agents: Agent[] }) {
                 <div className="stage-icon">
                   <Icon size={18} />
                 </div>
-                <span>{agent.name}</span>
+                <span>{agent.title}</span>
               </div>
               <h3>{agent.title}</h3>
               <p>{agent.role}</p>
@@ -799,31 +873,50 @@ function AgentsView({ agents }: { agents: Agent[] }) {
 
 function EmployeeWorkbench({
   agent,
-  seed,
-  viralAnalysis,
-  onSeedChange,
-  onViralAnalysisChange,
+  seed: initialSeed,
+  viralAnalysis: initialViralAnalysis,
   onRun,
   busy,
-  output
+  taskStatus,
+  error,
+  output,
+  logs
 }: {
   agent: Agent;
   seed: TopicSeed;
   viralAnalysis: ViralAnalysisConfig;
-  onSeedChange: (seed: TopicSeed) => void;
-  onViralAnalysisChange: (config: ViralAnalysisConfig) => void;
   onRun: (prompt: string, settings: Record<string, unknown>) => void;
   busy: boolean;
+  taskStatus: AgentTaskStatus;
+  error: string | null;
   output: AgentOutput | null;
+  logs: AgentTaskLog[];
 }) {
+  const [seed, setSeed] = useState<TopicSeed>(() => ({
+    ...initialSeed,
+    ...readSaved<Partial<TopicSeed>>(`signalforge.employee.${agent.id}.seed`, {})
+  }));
+  const [viralAnalysis, setViralAnalysis] = useState<ViralAnalysisConfig>(() => readSaved(`signalforge.employee.${agent.id}.viral`, initialViralAnalysis));
   const [prompt, setPrompt] = useState("");
   const [videoFormat, setVideoFormat] = useState("vertical");
   const [editingRequirements, setEditingRequirements] = useState("");
   const [outputDir, setOutputDir] = useState("");
+  const [timeoutSeconds, setTimeoutSeconds] = useState(300);
   const Icon = roleIcons[agent.id] ?? Bot;
+  const employeeMeta = viewMeta[`agent_${agent.id}` as ViewId];
   const isViral = agent.id === "viral_analyst";
   const isWriter = agent.id === "copywriter";
   const isHotspot = agent.id === "hotspot_monitor";
+
+  useEffect(() => { window.localStorage.setItem(`signalforge.employee.${agent.id}.seed`, JSON.stringify(seed)); }, [agent.id, seed]);
+  useEffect(() => { window.localStorage.setItem(`signalforge.employee.${agent.id}.viral`, JSON.stringify(viralAnalysis)); }, [agent.id, viralAnalysis]);
+  useEffect(() => {
+    const saved = readSaved<{ prompt?: string; videoFormat?: string; editingRequirements?: string; outputDir?: string; timeoutSeconds?: number }>(`signalforge.employee.${agent.id}.form`, {});
+    setPrompt(saved.prompt ?? ""); setVideoFormat(saved.videoFormat ?? "vertical");
+    setEditingRequirements(saved.editingRequirements ?? ""); setOutputDir(saved.outputDir ?? "");
+    setTimeoutSeconds(Number.isFinite(saved.timeoutSeconds) && (saved.timeoutSeconds ?? 0) >= 0 ? Math.min(86400, Math.floor(saved.timeoutSeconds!)) : 300);
+  }, [agent.id]);
+  useEffect(() => { window.localStorage.setItem(`signalforge.employee.${agent.id}.form`, JSON.stringify({ prompt, videoFormat, editingRequirements, outputDir, timeoutSeconds })); }, [agent.id, prompt, videoFormat, editingRequirements, outputDir, timeoutSeconds]);
 
   function submit() {
     onRun(prompt, {
@@ -840,6 +933,7 @@ function EmployeeWorkbench({
       ,script: agent.id === "video_editor" ? prompt : undefined
       ,output_dir: agent.id === "video_editor" ? outputDir : undefined
       ,artifact_output_dir: agent.id === "operator" ? outputDir : undefined
+      ,timeout_seconds: timeoutSeconds
     });
   }
 
@@ -848,21 +942,26 @@ function EmployeeWorkbench({
       <section className="panel employee-hero">
         <div className="stage-head">
           <div className="stage-icon"><Icon size={20} /></div>
-          <span>{agent.name} · {agent.title}</span>
         </div>
-        <h2>{agent.title}独立工作台</h2>
-        <p>{agent.role}</p>
+        <div className="employee-hero-copy">
+          <h2>{agent.title}</h2>
+          <p>{employeeMeta?.subtitle ?? agent.role}</p>
+        </div>
+        <div className="employee-task-summary" aria-live="polite">
+          <span>独立任务</span>
+          <strong className={cn("employee-task-state", taskStatus)}>{agentTaskStatusText[taskStatus]}</strong>
+        </div>
       </section>
       <div className="employee-work-grid">
         <section className="panel employee-settings">
           <div className="panel-heading tight"><div><h2>调用设置</h2><p>只调用当前员工，不启动整条流水线。</p></div></div>
           {isHotspot && <>
-            <label><span>领域</span><input value={seed.domain} onChange={(event) => onSeedChange({ ...seed, domain: event.target.value })} /></label>
-            <label><span>受众</span><input value={seed.audience} onChange={(event) => onSeedChange({ ...seed, audience: event.target.value })} /></label>
+            <label><span>领域</span><input value={seed.domain} onChange={(event) => setSeed({ ...seed, domain: event.target.value })} /></label>
+            <label><span>受众</span><input value={seed.audience} onChange={(event) => setSeed({ ...seed, audience: event.target.value })} /></label>
           </>}
           {isWriter && <>
-            <label><span>主题</span><textarea value={seed.brief} onChange={(event) => onSeedChange({ ...seed, brief: event.target.value })} /></label>
-            <label><span>时长（秒）</span><input type="number" min={30} max={240} value={seed.duration_seconds} onChange={(event) => onSeedChange({ ...seed, duration_seconds: Number(event.target.value) })} /></label>
+            <label><span>主题</span><textarea value={seed.brief} onChange={(event) => setSeed({ ...seed, brief: event.target.value })} /></label>
+            <label><span>时长（秒）</span><input type="number" min={30} max={240} value={seed.duration_seconds} onChange={(event) => setSeed({ ...seed, duration_seconds: Number(event.target.value) })} /></label>
           </>}
           {agent.id === "video_editor" && <>
             <label><span>视频画幅</span><select className="workbench-select" value={videoFormat} onChange={(event) => setVideoFormat(event.target.value)}><option value="vertical">竖版 1080×1920</option><option value="horizontal">横版 1920×1080</option></select></label>
@@ -876,24 +975,39 @@ function EmployeeWorkbench({
           </>}
           {agent.id === "product_manager" && <label><span>分析类型</span><select className="workbench-select" defaultValue="需求拆解"><option>需求拆解</option><option>竞品分析</option><option>产品路线图</option></select></label>}
           {agent.id === "programmer" && <label><span>技术栈 / 输出形式</span><input defaultValue="Python、FastAPI、React；输出实施方案" /></label>}
+          <label>
+            <span>独立工作台超时（秒）</span>
+            <div className="timeout-input-row">
+              <input type="number" min={0} max={86400} value={timeoutSeconds === 0 ? "" : timeoutSeconds} onChange={(event) => setTimeoutSeconds(Math.max(0, Math.min(86400, Math.floor(Number(event.target.value) || 0))))} disabled={timeoutSeconds === 0} />
+              <span className="timeout-toggle"><input type="checkbox" checked={timeoutSeconds === 0} onChange={(event) => setTimeoutSeconds(event.target.checked ? 0 : 300)} /><span>不限时</span></span>
+            </div>
+            <small className="field-hint">只影响当前员工独立调用，不会改变总控制台工作流超时。</small>
+          </label>
           {isViral && <>
             <label className="switch-line switch-control">
-              <input type="checkbox" checked={viralAnalysis.enabled} onChange={(event) => onViralAnalysisChange({ ...viralAnalysis, enabled: event.target.checked })} />
+              <input type="checkbox" checked={viralAnalysis.enabled} onChange={(event) => setViralAnalysis({ ...viralAnalysis, enabled: event.target.checked })} />
               <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
               <span className="switch-copy"><strong>{viralAnalysis.enabled ? "已启用爆款分析师" : "已关闭爆款分析师"}</strong><small>{viralAnalysis.enabled ? "流水线会执行这一阶段" : "流水线会跳过这一阶段"}</small></span>
             </label>
-            <div className="segmented-control"><button className={cn("segment-button", viralAnalysis.source === "socialdatax" && "selected")} onClick={() => onViralAnalysisChange({ ...viralAnalysis, source: "socialdatax" })} type="button">SocialDataX</button><button className={cn("segment-button", viralAnalysis.source === "manual" && "selected")} onClick={() => onViralAnalysisChange({ ...viralAnalysis, source: "manual" })} type="button">手写分析</button></div>
-            <small className="field-hint">此处设置会同步到总览工作流；SocialDataX 只用于爆款样本分析，不是热点新闻源。</small>
-            {viralAnalysis.source === "manual" && <textarea className="manual-analysis-input" value={viralAnalysis.manual_content} onChange={(event) => onViralAnalysisChange({ ...viralAnalysis, manual_content: event.target.value })} placeholder="填写具体爆款样本、数据或你的分析结论；不要粘贴角色提示词" />}
+            <div className="segmented-control"><button className={cn("segment-button", viralAnalysis.source === "socialdatax" && "selected")} onClick={() => setViralAnalysis({ ...viralAnalysis, source: "socialdatax" })} type="button">SocialDataX</button><button className={cn("segment-button", viralAnalysis.source === "manual" && "selected")} onClick={() => setViralAnalysis({ ...viralAnalysis, source: "manual" })} type="button">手写分析</button></div>
+            <small className="field-hint">仅影响当前员工独立工作台，不会改变总控制台任务。</small>
+            {viralAnalysis.source === "manual" && <label><span>手写分析依据</span><textarea className="manual-analysis-input" value={viralAnalysis.manual_content} onChange={(event) => setViralAnalysis({ ...viralAnalysis, manual_content: event.target.value })} placeholder="填写具体爆款样本、数据或你的分析结论；不要粘贴角色提示词" /></label>}
           </>}
-          {agent.id === "stock_assistant" && <label><span>股票代码或名称</span><input value={seed.brief} onChange={(event) => onSeedChange({ ...seed, brief: event.target.value })} placeholder="600519, TSLA" /></label>}
+          {agent.id === "stock_assistant" && <label><span>股票代码或名称</span><input value={seed.brief} onChange={(event) => setSeed({ ...seed, brief: event.target.value })} placeholder="600519, TSLA" /></label>}
           <label><span>{agent.id === "video_editor" ? "脚本 / 口播文案" : "本次任务"}</span><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={isHotspot ? "例如：找今天影响普通创作者的 AI 行业热点" : agent.id === "video_editor" ? "粘贴完整脚本；剪辑员会按脚本生成时间轴、镜头、字幕和导出方案" : "描述这次要让员工完成什么"} /></label>
           <button className="primary-button" type="button" onClick={submit} disabled={busy}>{busy ? <Loader2 className="spin" size={17} /> : <Play size={17} />}<span>{busy ? "执行中" : `调用${agent.title}`}</span></button>
+          {error && <div className="employee-task-error"><AlertCircle size={16} /><span>{error}</span></div>}
         </section>
-        <section className="panel employee-output">
-          <div className="panel-heading tight"><div><h2>独立产物</h2><p>结果会保存到本次独立调用记录。</p></div></div>
-          {output ? <><small>{output.artifact_path}</small><pre>{output.content}</pre></> : <div className="empty-state"><Copy size={20} /><span>还没有调用结果。</span></div>}
-        </section>
+        <div className="employee-results-column">
+          <section className="panel employee-output">
+            <div className="panel-heading tight"><div><h2>独立产物</h2><p>结果会保存到本次独立调用记录。</p></div></div>
+            {output ? <><small>{output.artifact_path}</small><MarkdownContent content={output.content} /></> : <div className="empty-state employee-output-empty"><Copy size={20} /><span>还没有调用结果。</span></div>}
+          </section>
+          <section className="panel employee-log-panel">
+            <div className="panel-heading tight"><div><h2>本员工日志</h2></div></div>
+            {logs.length ? <div className="employee-log-list">{logs.slice().reverse().map((entry, index) => <div className="run-log-entry" key={`${entry.timestamp}-${index}`}><time>{new Date(entry.timestamp).toLocaleTimeString()}</time><span>{entry.message}</span></div>)}</div> : <small>暂无独立任务日志。</small>}
+          </section>
+        </div>
       </div>
     </div>
   );
@@ -911,8 +1025,7 @@ function EngagementView({ agents }: { agents: Agent[] }) {
   const [selectedId, setSelectedId] = useState(initialComments[0].id);
   const [draft, setDraft] = useState("");
   const selected = comments.find((comment) => comment.id === selectedId) ?? comments[0];
-  const fallbackNames: Record<string, string> = { healer: "周周", operator: "尤道理", product_manager: "方瓷" };
-  const agentName = (id: string) => agents.find((agent) => agent.id === id)?.name ?? fallbackNames[id] ?? id;
+  const agentName = (id: string) => agents.find((agent) => agent.id === id)?.title ?? id;
 
   useEffect(() => {
     if (!selected) return;
@@ -945,7 +1058,7 @@ function EngagementView({ agents }: { agents: Agent[] }) {
         {selected && <>
           <div className="panel-heading tight"><div><h2>回复工作台</h2><p>{selected.source}</p></div><span className={cn("reply-status", selected.status === "已回复" && "done")}>{selected.status}</span></div>
           <div className="selected-comment"><strong>{selected.author}</strong><p>{selected.content}</p></div>
-          <label className="reply-label"><span>负责员工</span><select value={selected.assignedAgentId} onChange={(event) => setComments((items) => items.map((item) => item.id === selected.id ? { ...item, assignedAgentId: event.target.value } : item))}>{agents.filter((agent) => ["healer", "operator", "product_manager"].includes(agent.id)).map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.title}</option>)}</select></label>
+          <label className="reply-label"><span>负责员工</span><select value={selected.assignedAgentId} onChange={(event) => setComments((items) => items.map((item) => item.id === selected.id ? { ...item, assignedAgentId: event.target.value } : item))}>{agents.filter((agent) => ["healer", "operator", "product_manager"].includes(agent.id)).map((agent) => <option key={agent.id} value={agent.id}>{agent.title}</option>)}</select></label>
           <label className="reply-label"><span>回复内容</span><textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={7} /></label>
           <div className="reply-footer"><span><MessageCircle size={15} /> 建议由 {agentName(selected.assignedAgentId)} 回复</span><button className="primary-button" type="button" onClick={sendReply} disabled={selected.status === "已回复" || !draft.trim()}>{selected.status === "已回复" ? "已提交" : "提交回复"}</button></div>
         </>}
@@ -977,7 +1090,7 @@ function StockAnalysisView() {
       <section className="panel action-panel">
         <div className="panel-heading">
           <div>
-            <h2>林量 · Stock Analysis Skill</h2>
+            <h2>股票助手 · Stock Analysis Skill</h2>
             <p>财经、股票和股票新闻请求默认调用此 Skill。支持 A 股、港股、美股。</p>
           </div>
           <button className="primary-button" onClick={handleAnalyze} disabled={busy || !stocks.trim()} type="button">
@@ -1001,7 +1114,7 @@ function StockAnalysisView() {
               <p>数据脚本：{result.data_script} · 新闻抓取：{result.news_enabled ? "已启用" : "未启用"}</p>
             </div>
           </div>
-          <pre>{result.report}</pre>
+          <MarkdownContent content={result.report} className="stock-report-markdown" />
           <p className="risk-note">{result.disclaimer}</p>
         </section>
       )}
@@ -1092,7 +1205,7 @@ function ServiceCard({
   );
 }
 
-function SettingsView({ status, currentRun, onImport, onBackendStateChange, systemStatusSnapshot, onSystemStatusSnapshotChange }: { status: ApiStatus | null; currentRun: WorkflowRun | null; onImport: (run: WorkflowRun) => void; onBackendStateChange: () => void; systemStatusSnapshot: SystemStatus | null; onSystemStatusSnapshotChange: (status: SystemStatus) => void }) {
+function SettingsView({ status, currentRun, onImport, onBackendStateChange, systemStatusSnapshot, onSystemStatusSnapshotChange, viralAnalysis, onViralAnalysisChange }: { status: ApiStatus | null; currentRun: WorkflowRun | null; onImport: (run: WorkflowRun) => void; onBackendStateChange: () => void; systemStatusSnapshot: SystemStatus | null; onSystemStatusSnapshotChange: (status: SystemStatus) => void; viralAnalysis: ViralAnalysisConfig; onViralAnalysisChange: (config: ViralAnalysisConfig) => void }) {
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(systemStatusSnapshot);
   const [controlBusy, setControlBusy] = useState<ControlAction | null>(null);
   const [controlMessage, setControlMessage] = useState<string | null>(null);
@@ -1329,7 +1442,7 @@ function SettingsView({ status, currentRun, onImport, onBackendStateChange, syst
           <label className="timeout-field"><span className="timeout-label">AI Base URL</span><input value={envDraft.ai_base_url} onChange={(e) => setEnvDraft({ ...envDraft, ai_base_url: e.target.value })} placeholder="https://api.openlux.ai/v1" /></label>
           <label className="timeout-field"><span className="timeout-label">AI Model</span><input value={envDraft.ai_model} onChange={(e) => setEnvDraft({ ...envDraft, ai_model: e.target.value })} placeholder="留空自动选择" /></label>
           <label className="timeout-field"><span className="timeout-label">后端端口</span><input type="number" min="1" max="65535" value={envDraft.backend_port} onChange={(e) => setEnvDraft({ ...envDraft, backend_port: Number(e.target.value) || 8017 })} /></label>
-          <label className="timeout-field"><span className="timeout-label">AI API Key {envSettings?.ai_api_key.configured && <small>（当前 {envSettings.ai_api_key.preview}）</small>}</span><input type="password" value={envDraft.ai_api_key} onChange={(e) => setEnvDraft({ ...envDraft, ai_api_key: e.target.value })} placeholder="留空保留现有密钥" autoComplete="new-password" /></label>
+          <label className="timeout-field"><span className="timeout-label">AI API Key {envSettings?.ai_api_key.configured && <small><br />（当前 {envSettings.ai_api_key.preview}）</small>}</span><input type="password" value={envDraft.ai_api_key} onChange={(e) => setEnvDraft({ ...envDraft, ai_api_key: e.target.value })} placeholder="留空保留现有密钥" autoComplete="new-password" /></label>
           <label className="timeout-field"><span className="timeout-label">Pexels Key {envSettings?.mpt_pexels_api_key.configured && <small>（已配置）</small>}</span><input type="password" value={envDraft.mpt_pexels_api_key} onChange={(e) => setEnvDraft({ ...envDraft, mpt_pexels_api_key: e.target.value })} placeholder="可选" autoComplete="new-password" /></label>
           <label className="timeout-field"><span className="timeout-label">SocialDataX Base URL</span><input value={envDraft.socialdatax_base_url} onChange={(e) => setEnvDraft({ ...envDraft, socialdatax_base_url: e.target.value })} /></label>
           <label className="timeout-field"><span className="timeout-label">SocialDataX API Key {envSettings?.socialdatax_api_key.configured && <small>（已配置）</small>}</span><input type="password" value={envDraft.socialdatax_api_key} onChange={(e) => setEnvDraft({ ...envDraft, socialdatax_api_key: e.target.value })} placeholder="可选" autoComplete="new-password" /></label>
@@ -1337,6 +1450,12 @@ function SettingsView({ status, currentRun, onImport, onBackendStateChange, syst
           {activeEnvCategory === "other" && <>
             <div className="timeout-field directory-field"><span className="timeout-label">视频输出目录</span><div className="directory-picker-row"><span className="directory-value">{outputDirs.video_output_dir || "未选择"}</span><button className="ghost-button" type="button" onClick={() => handleDirectorySelect("video_output_dir")}>选择目录</button></div><span className="timeout-hint">MP4 成片及视频剪辑产物</span></div>
             <div className="timeout-field directory-field"><span className="timeout-label">运营大师输出目录</span><div className="directory-picker-row"><span className="directory-value">{outputDirs.operator_output_dir || "未选择"}</span><button className="ghost-button" type="button" onClick={() => handleDirectorySelect("operator_output_dir")}>选择目录</button></div><span className="timeout-hint">标题、封面文案、发布时间和复盘指标</span></div>
+            <div className="other-config-block">
+              <div className="other-config-heading"><div><strong>爆款分析</strong><span>这里只影响总控制台流水线；<br />员工独立工作台有各自设置。</span></div></div>
+              <label className="switch-line switch-control"><input type="checkbox" checked={viralAnalysis.enabled} onChange={(event) => onViralAnalysisChange({ ...viralAnalysis, enabled: event.target.checked })} /><span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span><span className="switch-copy"><strong>{viralAnalysis.enabled ? "已启用" : "已关闭"}</strong><small>控制台流水线是否执行爆款分析阶段</small></span></label>
+              <div className="segmented-control"><button className={cn("segment-button", viralAnalysis.source === "socialdatax" && "selected")} onClick={() => onViralAnalysisChange({ ...viralAnalysis, source: "socialdatax" })} type="button">SocialDataX</button><button className={cn("segment-button", viralAnalysis.source === "manual" && "selected")} onClick={() => onViralAnalysisChange({ ...viralAnalysis, source: "manual" })} type="button">手写分析</button></div>
+              {viralAnalysis.source === "manual" && <label><span>手写分析依据</span><textarea value={viralAnalysis.manual_content} onChange={(event) => onViralAnalysisChange({ ...viralAnalysis, manual_content: event.target.value })} placeholder="填写总控制台本轮使用的样本或分析依据" /></label>}
+            </div>
           </>}
         </div>
         <details className="env-advanced"><summary>股票新闻服务密钥（可选）</summary><div className="timeout-grid">
@@ -1468,7 +1587,6 @@ function SettingsView({ status, currentRun, onImport, onBackendStateChange, syst
         </div>
       </section>
       </div>
-      <SettingsStrip status={status} />
     </div>
   );
 }
@@ -1528,7 +1646,10 @@ export default function App() {
   const [activeView, setActiveView] = useState<ViewId>(readSavedView);
   const [status, setStatus] = useState<ApiStatus | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [seed, setSeed] = useState<TopicSeed>(() => readSaved("signalforge.seed", defaultSeed));
+  const [seed, setSeed] = useState<TopicSeed>(() => ({
+    ...defaultSeed,
+    ...readSaved<Partial<TopicSeed>>("signalforge.seed", {})
+  }));
   const [viralAnalysis, setViralAnalysis] = useState<ViralAnalysisConfig>(readViralAnalysis);
   const [run, setRun] = useState<WorkflowRun | null>(readSavedRun);
   const [selectedTopicTitle, setSelectedTopicTitle] = useState<string | null>(() => readSaved< string | null>("signalforge.selectedTopicTitle", null));
@@ -1539,6 +1660,7 @@ export default function App() {
   const [closing, setClosing] = useState(false);
   const [shutdownComplete, setShutdownComplete] = useState(false);
   const [systemStatusSnapshot, setSystemStatusSnapshot] = useState<SystemStatus | null>(null);
+  const [settingsStripCollapsed, setSettingsStripCollapsed] = useState(false);
 
   // Keep local service state warm while the app is open, instead of waiting
   // for the Settings view to mount and issuing its first expensive query.
@@ -1557,9 +1679,43 @@ export default function App() {
     };
   }, []);
   const [error, setError] = useState<string | null>(null);
-  const [agentBusy, setAgentBusy] = useState(false);
-  const [agentOutputs, setAgentOutputs] = useState<Record<string, AgentOutput | null>>({});
+  const [agentTaskStatuses, setAgentTaskStatuses] = useState<Record<string, AgentTaskStatus>>({});
+  const [agentErrors, setAgentErrors] = useState<Record<string, string | null>>({});
+  const [agentOutputs, setAgentOutputs] = useState<Record<string, AgentOutput | null>>(() => readSaved("signalforge.employee.outputs", {}));
+  const [agentLogs, setAgentLogs] = useState<Record<string, AgentTaskLog[]>>({});
   const importedRunRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const agentId = employeeIdFromView(activeView);
+    if (!agentId) return;
+    fetchAgentLogs(agentId).then((logs) => {
+      setAgentLogs((current) => ({ ...current, [agentId]: logs }));
+      setAgentTaskStatuses((current) => {
+        if (current[agentId] === "running") return current;
+        const latest = logs.at(-1);
+        const taskStatus = latest?.level === "success"
+          ? "completed"
+          : latest?.level === "error"
+            ? "failed"
+            : latest?.level === "info"
+              ? "running"
+              : "idle";
+        return { ...current, [agentId]: taskStatus };
+      });
+    }).catch(() => undefined);
+  }, [activeView]);
+  useEffect(() => { window.localStorage.setItem("signalforge.employee.outputs", JSON.stringify(agentOutputs)); }, [agentOutputs]);
+
+  // Standalone workbench results are project artifacts as well as a local
+  // cache, so importing/loading a project restores them into each workbench.
+  useEffect(() => {
+    if (!run?.standalone_outputs?.length) return;
+    setAgentOutputs((current) => {
+      const next = { ...current };
+      for (const output of run.standalone_outputs ?? []) next[output.agent_id] = output;
+      return next;
+    });
+  }, [run?.id, run?.standalone_outputs]);
 
   const outputs = useMemo(() => {
     return [...extraOutputs, ...(run?.outputs ?? [])];
@@ -1633,15 +1789,34 @@ export default function App() {
   }
 
   async function handleSingleAgent(agentId: string, prompt: string, settings: Record<string, unknown>) {
-    setAgentBusy(true);
-    setError(null);
+    setAgentTaskStatuses((current) => ({ ...current, [agentId]: "running" }));
+    setAgentErrors((current) => ({ ...current, [agentId]: null }));
     try {
-      const output = await runAgent(agentId, { prompt, settings });
+      // A standalone run still belongs to a project. If the user opened an
+      // employee workbench before creating a console task, create a paused
+      // project checkpoint first so this result can be exported.
+      let project = run;
+      if (!project) {
+        project = await runHotVideoWorkflow(seed, "manual", viralAnalysis);
+        setRun(project);
+      }
+      const timeoutSeconds = typeof settings.timeout_seconds === "number" ? settings.timeout_seconds : 300;
+      const output = await runAgent(agentId, { prompt, settings, timeout_seconds: timeoutSeconds, project_run_id: project.id });
       setAgentOutputs((current) => ({ ...current, [agentId]: output }));
+      setRun((current) => current ? {
+        ...current,
+        standalone_outputs: [
+          ...(current.standalone_outputs ?? []).filter((item) => item.agent_id !== agentId),
+          output,
+        ],
+      } : current);
+      const logs = await fetchAgentLogs(agentId);
+      setAgentLogs((current) => ({ ...current, [agentId]: logs }));
+      setAgentTaskStatuses((current) => ({ ...current, [agentId]: "completed" }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : `${agentId} 执行失败`);
-    } finally {
-      setAgentBusy(false);
+      const message = err instanceof Error ? err.message : `${agentId} 执行失败`;
+      setAgentTaskStatuses((current) => ({ ...current, [agentId]: "failed" }));
+      setAgentErrors((current) => ({ ...current, [agentId]: message }));
     }
   }
 
@@ -1795,26 +1970,10 @@ export default function App() {
         <TopBar
           activeView={activeView}
           status={status}
-          running={running || agentBusy}
-          onRun={() => {
-            const agentId = employeeIdFromView(activeView);
-            if (agentId) {
-              void handleSingleAgent(agentId, "", {
-                topic: seed.brief,
-                audience: seed.audience,
-                duration_seconds: seed.duration_seconds,
-                domain: seed.domain,
-                source: viralAnalysis.source,
-                manual_content: viralAnalysis.manual_content
-              });
-            } else if (activeView === "radar") {
-              void handleRadarScan();
-            } else {
-              void handleRun();
-            }
-          }}
+          running={running}
+          onRun={() => void handleRun()}
         />
-        {error && (
+        {error && !employeeIdFromView(activeView) && (
           <div className="error-bar">
             <AlertCircle size={17} />
             <span>{error}</span>
@@ -1859,20 +2018,21 @@ export default function App() {
         )}
         {activeView === "editing" && <EditingQueueView outputs={outputs} seed={seed} />}
         {activeView === "engagement" && <EngagementView agents={agents} />}
-        {activeView === "settings" && <SettingsView status={status} currentRun={run} systemStatusSnapshot={systemStatusSnapshot} onSystemStatusSnapshotChange={setSystemStatusSnapshot} onImport={(imported) => { importedRunRef.current = imported.id; setRun(imported); setSelectedTopicTitle(imported.selected_topic_title ?? null); }} onBackendStateChange={() => refreshBackendData()} />}
+        {activeView === "settings" && <SettingsView status={status} currentRun={run} viralAnalysis={viralAnalysis} onViralAnalysisChange={setViralAnalysis} systemStatusSnapshot={systemStatusSnapshot} onSystemStatusSnapshotChange={setSystemStatusSnapshot} onImport={(imported) => { importedRunRef.current = imported.id; setRun(imported); setSelectedTopicTitle(imported.selected_topic_title ?? null); setAgentOutputs(Object.fromEntries((imported.standalone_outputs ?? []).map((output) => [output.agent_id, output]))); }} onBackendStateChange={() => refreshBackendData()} />}
         {employeeIdFromView(activeView) && agents.find((agent) => agent.id === employeeIdFromView(activeView)) && (
           <EmployeeWorkbench
             agent={agents.find((agent) => agent.id === employeeIdFromView(activeView))!}
             seed={seed}
             viralAnalysis={viralAnalysis}
-            onSeedChange={setSeed}
-            onViralAnalysisChange={setViralAnalysis}
             onRun={(prompt, settings) => void handleSingleAgent(employeeIdFromView(activeView)!, prompt, settings)}
-            busy={agentBusy}
+            busy={agentTaskStatuses[employeeIdFromView(activeView)!] === "running"}
+            taskStatus={agentTaskStatuses[employeeIdFromView(activeView)!] ?? "idle"}
+            error={agentErrors[employeeIdFromView(activeView)!] ?? null}
             output={agentOutputs[employeeIdFromView(activeView)!] ?? null}
+            logs={agentLogs[employeeIdFromView(activeView)!] ?? []}
           />
         )}
-        {activeView !== "settings" && <SettingsStrip status={status} />}
+        <SettingsStrip status={status} collapsed={settingsStripCollapsed} onToggle={() => setSettingsStripCollapsed((value) => !value)} />
       </main>
     </div>
   );

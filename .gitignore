@@ -15,6 +15,7 @@ frontend/vite.config.d.ts
 .pnpm-store/
 
 workspaces/runs/
+workspaces/agent-logs/
 workspaces/runtime-settings.json
 workspaces/*.png
 *.log

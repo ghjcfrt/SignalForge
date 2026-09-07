@@ -4,6 +4,7 @@ import asyncio
 import os
 import subprocess
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -33,6 +34,7 @@ class MoneyPrinterTurboRequest(BaseModel):
     subject: str
     extra_args: list[str] = []
     output_dir: str | None = None
+    video_aspect: Literal["9:16", "16:9"] = "9:16"
 
 
 class MoneyPrinterTurboRunResult(BaseModel):
@@ -68,7 +70,7 @@ def mpt_status(settings: Settings) -> MoneyPrinterTurboStatus:
         upstream="https://github.com/harry0703/MoneyPrinterTurbo",
         license="MIT",
         missing_env=missing_env,
-        default_command='uv run --no-project --python 3.11.15 python mpt_agent.py --subject "<视频主题或脚本>"',
+        default_command='uv run --no-project --python 3.11.15 python mpt_agent.py --subject "<视频主题或脚本>" -- --video-aspect "9:16"',
     )
 
 
@@ -132,6 +134,9 @@ async def run_moneyprinterturbo(
         request.subject,
         *( ["--output-dir", request.output_dir] if request.output_dir else [] ),
         *request.extra_args,
+        "--",
+        "--video-aspect",
+        request.video_aspect,
     ]
     try:
         # Video rendering is intentionally unbounded by default.  It may

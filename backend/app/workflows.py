@@ -36,6 +36,8 @@ from backend.app.video_tools import MoneyPrinterTurboRequest, run_moneyprintertu
 
 RUNS: dict[str, WorkflowRun] = {}
 WORKFLOW_STAGES = ["hotspot_monitor", "viral_analyst", "copywriter", "video_editor", "operator"]
+WORKFLOW_LOG_FILENAME = "run.log"
+LEGACY_WORKFLOW_LOG_FILENAME = "run.log.jsonl"
 STOCK_SKILL_DIR = WORKSPACE_DIR / "agents" / "stock_assistant" / "skills" / "stock-analysis"
 STOCK_DATA_SCRIPT = STOCK_SKILL_DIR / "references" / "stock_data_fetcher.py"
 STOCK_ANALYSIS_PROMPT = STOCK_SKILL_DIR / "references" / "analysis-prompt-template.md"
@@ -985,7 +987,7 @@ async def analyze_stocks(request: StockAnalysisRequest, settings: Settings) -> S
     gateway = LlmGateway(settings)
     result = await gateway.complete(
         system=(
-            "你是 SignalForge 的股票助手林量。严格依据输入的真实数据和新闻输出中文股票决策看板。"
+            "你是 SignalForge 的股票助手。严格依据输入的真实数据和新闻输出中文股票决策看板。"
             "不得编造价格或新闻；缺失数据必须明确标注。必须包含数据来源、分析时间、风险和免责声明。"
             "这不是投资建议。\n\n分析框架：\n" + prompt + "\n\n输出模板：\n" + template
         ),
@@ -1050,6 +1052,25 @@ def _checkpoint(workflow: WorkflowRun) -> None:
     temporary.replace(path)
 
 
+def _workflow_log_path(workflow: WorkflowRun) -> Path:
+    """Return the canonical log path and migrate the previous JSONL filename."""
+    run_dir = Path(workflow.run_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    path = run_dir / WORKFLOW_LOG_FILENAME
+    legacy_path = run_dir / LEGACY_WORKFLOW_LOG_FILENAME
+
+    if legacy_path.exists():
+        if path.exists():
+            with legacy_path.open("rb") as source, path.open("ab") as destination:
+                destination.write(source.read())
+            legacy_path.unlink()
+        else:
+            legacy_path.replace(path)
+
+    workflow.log_file = str(path)
+    return path
+
+
 def _log(
     workflow: WorkflowRun,
     message: str,
@@ -1058,7 +1079,7 @@ def _log(
     level: str = "info",
     detail: str | None = None,
 ) -> None:
-    """Persist a human-readable event and a JSONL diagnostic immediately."""
+    """Persist a human-readable event and structured diagnostic immediately."""
     entry = WorkflowLog(
         timestamp=_now(),
         level=level if level in {"info", "warning", "error"} else "info",
@@ -1067,11 +1088,7 @@ def _log(
         detail=detail,
     )
     workflow.logs.append(entry)
-    run_dir = Path(workflow.run_dir)
-    run_dir.mkdir(parents=True, exist_ok=True)
-    if not workflow.log_file:
-        workflow.log_file = str(run_dir / "run.log.jsonl")
-    with Path(workflow.log_file).open("a", encoding="utf-8") as log_file:
+    with _workflow_log_path(workflow).open("a", encoding="utf-8") as log_file:
         log_file.write(json.dumps(entry.model_dump(mode="json"), ensure_ascii=False) + "\n")
     _checkpoint(workflow)
 
@@ -1108,20 +1125,26 @@ def _ensure_workflow_state(workflow: WorkflowRun) -> None:
     # Older checkpoints may contain model-generated diagnostics as topics.
     # Re-apply the current boundary when loading them so a service restart (or
     # an already-open UI) cannot keep displaying those pseudo-candidates.
+    changed = False
     original_topics = workflow.topics
     workflow.topics = _validate_topics(workflow.topics)
     if len(workflow.topics) != len(original_topics) or any(
         left.model_dump(mode="json") != right.model_dump(mode="json")
         for left, right in zip(workflow.topics, original_topics)
     ):
-        _checkpoint(workflow)
+        changed = True
     for stage in WORKFLOW_STAGES:
         if stage not in workflow.stage_status:
             workflow.stage_status[stage] = "completed" if any(
                 output.agent_id == stage for output in workflow.outputs
             ) else "pending"
-    if not workflow.log_file:
-        workflow.log_file = str(Path(workflow.run_dir) / "run.log.jsonl")
+            changed = True
+    previous_log_file = workflow.log_file
+    _workflow_log_path(workflow)
+    if workflow.log_file != previous_log_file:
+        changed = True
+    if changed:
+        _checkpoint(workflow)
 
 
 def _fallback_topics(seed: TopicSeed) -> list[Topic]:
@@ -1220,7 +1243,7 @@ def create_workflow(seed: TopicSeed, viral_analysis: ViralAnalysisConfig | None 
             stage: ("completed" if stage == "viral_analyst" and not analysis.enabled else "pending")
             for stage in WORKFLOW_STAGES
         },
-        log_file=str(run_dir / "run.log.jsonl"),
+        log_file=str(run_dir / WORKFLOW_LOG_FILENAME),
         viral_analysis=analysis,
     )
     RUNS[run_id] = workflow
@@ -1313,7 +1336,7 @@ async def scout_topics(seed: TopicSeed, settings: Settings) -> tuple[list[Topic]
         result = await _await_with_optional_timeout(gateway.complete(
         system=(
             prompt_contract +
-            "你是热讯工坊的热点监控员赵爽。你只输出 JSON，不输出解释。"
+            "你是热讯工坊的热点监控员。你只输出 JSON，不输出解释。"
             "字段必须是 topics 数组，每个元素包含 title, heat, source_hint, sources, "
             "cross_check_note, checked_at, verification_status, verification_note, angle, risk。"
             "必须先遍历输入中的全部候选来源，再返回 3-5 个候选；不得找到一个候选后提前停止。"
@@ -1338,7 +1361,7 @@ async def scout_topics(seed: TopicSeed, settings: Settings) -> tuple[list[Topic]
     if not topics:
         topics = _evidence_only_topics(raw_items, seed)
     if not topics:
-        raise RuntimeError("赵爽没有基于公开实时结果返回有效热点，已拒绝展示模型记忆内容")
+        raise RuntimeError("热点监控员没有基于公开实时结果返回有效热点，已拒绝展示模型记忆内容")
     _augment_topic_sources(topics, raw_items)
     # A topic must be grounded in at least one fetched item relevant to the
     # requested direction.  This blocks model-generated "all sources were
@@ -1383,7 +1406,7 @@ async def generate_script(request: GenerateScriptRequest, settings: Settings) ->
 """
     result = await gateway.complete(
         system=(
-            "你是热讯工坊的文案助手洛一。请写中文短视频口播脚本，"
+            "你是热讯工坊的文案助手。请写中文短视频口播脚本，"
             "结构必须包含开场钩子、事件经过、关键分析、收束观点，语气克制但有传播性。"
             f"严格控制为约 {request.duration_seconds} 秒，时间轴最后一段必须结束在 {request.duration_seconds} 秒；"
             "只输出成稿，不要输出‘如你愿意我可以’等助手元话术。"
@@ -1437,6 +1460,7 @@ def _video_edit_fallback(subject: str, script: str, settings: dict[str, object] 
     options = settings or {}
     fmt = str(options.get("format") or "vertical").lower()
     canvas = "1920×1080（16:9）" if fmt in {"horizontal", "landscape", "横版"} else "1080×1920（9:16）"
+    aspect_ratio = "16:9" if fmt in {"horizontal", "landscape", "横版"} else "9:16"
     requirements = str(options.get("editing_requirements") or "字幕逐句跟随口播，关键词高亮").strip()
     duration = int(options.get("duration_seconds") or 110)
     duration = max(30, min(duration, 240))
@@ -1473,7 +1497,7 @@ def _video_edit_fallback(subject: str, script: str, settings: dict[str, object] 
 
 ## MoneyPrinterTurbo 导出命令
 ```bash
-uv run --no-project --python 3.11.15 python mpt_agent.py --subject "{subject or '未命名选题'}"
+uv run --no-project --python 3.11.15 python mpt_agent.py --subject "{subject or '未命名选题'}" -- --video-aspect "{aspect_ratio}"
 ```
 该命令需要在 MoneyPrinterTurbo Skill 目录执行；它是生成尝试，不代表本次已经生成 MP4。
 
@@ -1499,6 +1523,7 @@ async def _append_video_generation(
     *,
     timeout_seconds: int | None = 0,
     output_dir: str | None = None,
+    video_aspect: str = "vertical",
 ) -> str:
     """Run the installed MoneyPrinterTurbo helper and record its result.
 
@@ -1511,7 +1536,11 @@ async def _append_video_generation(
         if output_dir is None:
             output_dir = get_output_directory_settings().video_output_dir.strip() or None
         result = await run_moneyprinterturbo(
-            MoneyPrinterTurboRequest(subject=subject, output_dir=output_dir),
+            MoneyPrinterTurboRequest(
+                subject=subject,
+                output_dir=output_dir,
+                video_aspect="16:9" if video_aspect == "horizontal" else "9:16",
+            ),
             get_settings(),
             timeout_seconds=timeout_seconds,
         )
@@ -1675,7 +1704,7 @@ async def run_agent(agent_id: str, request: RunAgentRequest, settings: Settings)
         fallback = _video_edit_fallback(subject, script, edit_settings)
         result = await gateway.complete(
             system=(
-                "你是热讯工坊视频剪辑员小李。只输出可执行的视频剪辑执行单，不要索要更多信息，"
+                "你是热讯工坊视频剪辑员。只输出可执行的视频剪辑执行单，不要索要更多信息，"
                 "不要输出测试方案或助手元话术。必须包含：成片规格、时间轴与分镜（逐段时间/画面/字幕/动作）、"
                 "字幕与配音、素材来源与版权、MoneyPrinterTurbo 导出命令、发布前验收。"
                 f"目标时长约 {max(30, min(duration, 240))} 秒；不得新增脚本中没有的事实。"
@@ -1688,7 +1717,15 @@ async def run_agent(agent_id: str, request: RunAgentRequest, settings: Settings)
             fallback=fallback,
         )
         edit_content = _ensure_video_edit_sections(result.content, fallback)
-        edit_content = await _append_video_generation(edit_content, subject, output_dir=str(edit_settings.get("output_dir") or "") or None)
+        requested_canvas = "横版 1920×1080（16:9）" if str(edit_settings.get("format") or "vertical") == "horizontal" else "竖版 1080×1920（9:16）"
+        if requested_canvas not in edit_content:
+            edit_content += f"\n\n## 画幅校验\n- 指定画幅：{requested_canvas}。导出前必须按此规格验收。"
+        edit_content = await _append_video_generation(
+            edit_content,
+            subject,
+            output_dir=str(edit_settings.get("output_dir") or "") or None,
+            video_aspect=str(edit_settings.get("format") or "vertical"),
+        )
         return _output(run_dir, agent_id, "视频成片", edit_content, str(edit_settings.get("artifact_output_dir") or "") or None)
     if agent_id == "stock_assistant":
         stock_request = StockAnalysisRequest(
@@ -1783,7 +1820,7 @@ async def run_agent(agent_id: str, request: RunAgentRequest, settings: Settings)
         return _output(run_dir, agent_id, "爆款分析师独立分析", _ensure_standalone_viral_sections(result.content, fallback))
     fallback = f"# {agent.title}独立执行\n\n任务：{prompt}\n\n请结合你的职责“{agent.role}”给出结构化、可执行结果。"
     result = await gateway.complete(
-        system=f"你是热讯工坊员工{agent.name}（{agent.title}）。你的职责是：{agent.role}。输出中文 Markdown。",
+        system=f"你是热讯工坊的{agent.title}。你的职责是：{agent.role}。输出中文 Markdown。",
         user=prompt,
         fallback=fallback,
     )
@@ -1956,7 +1993,7 @@ async def run_hot_video_workflow(
         created_at=_now(),
         current_stage=None,
         resumable=True,
-        log_file=str(run_dir / "run.log.jsonl"),
+        log_file=str(run_dir / WORKFLOW_LOG_FILENAME),
         viral_analysis=viral_analysis or ViralAnalysisConfig(),
     )
     _ensure_workflow_state(workflow)
@@ -2103,7 +2140,7 @@ async def run_hot_video_workflow(
                         analyst_fallback = _viral_analysis_fallback(selected, seed)
                         result = await gateway.complete(
                             system=(
-                                "你是爆款分析师星辰。输出中文 Markdown，严格包含：推荐角度、核心观点、标题结构、"
+                                "你是爆款分析师。输出中文 Markdown，严格包含：推荐角度、核心观点、标题结构、"
                                 "开头策略、内容顺序、必须包含的事实、不能出现、表达风格。"
                                 "你的职责是定角度、定结构、定规则，不替文案助手写成稿。"
                                 "SocialDataX 数据只是公开样本，互动量只能用于样本比较，不得编造缺失数据或平台总体结论。"
@@ -2137,7 +2174,7 @@ async def run_hot_video_workflow(
 如果你把 AI 当成一个聊天框，它只能帮你省一点时间；但如果你把它拆成一家公司，事情就变了。
 
 ## 事件经过（8-60 秒）
-今天这个热点是：{selected.title}。它之所以值得关注，是因为内容生产已经开始被拆成岗位：赵爽负责找热点，星辰负责判断能不能爆，洛一写脚本，小李给出剪辑方案，尤道理负责发布和复盘。
+今天这个热点是：{selected.title}。它之所以值得关注，是因为内容生产已经开始被拆成岗位：热点监控员负责找热点，爆款分析师负责判断能不能爆，文案助手写脚本，视频剪辑员给出剪辑方案，运营大师负责发布和复盘。
 
 ## 关键分析（60-95 秒，事实与推测分开）
 这里最重要的不是名字，而是边界。每个 AI 员工有自己的任务、产物和工作区，老板只负责决策和验收。
@@ -2150,7 +2187,7 @@ async def run_hot_video_workflow(
                 else:
                     result = await gateway.complete(
                         system=(
-                            "你是文案助手洛一。写中文短视频脚本，含时间段、口播、镜头提示。"
+                            "你是文案助手。写中文短视频脚本，含时间段、口播、镜头提示。"
                             f"严格控制为约 {seed.duration_seconds} 秒，时间轴最后一段必须结束在 {seed.duration_seconds} 秒。"
                             "必须区分已确认事实与推测/待验证判断；只输出成稿，不要输出助手元话术。"
                         ),
@@ -2168,6 +2205,8 @@ async def run_hot_video_workflow(
                     raise RuntimeError("找不到已核验选题，无法生成剪辑方案")
                 script_content = output_for("copywriter").content if output_for("copywriter") else script_content
                 if not output_for("video_editor"):
+                    canvas = "横版 1920x1080（16:9）" if seed.video_aspect == "horizontal" else "竖版 1080x1920（9:16）"
+                    mpt_aspect = "16:9" if seed.video_aspect == "horizontal" else "9:16"
                     edit_fallback = f"""# 自动剪辑方案：{selected.title}
 
 ## 工具
@@ -2175,16 +2214,16 @@ async def run_hot_video_workflow(
 - 上游出处：https://github.com/harry0703/MoneyPrinterTurbo
 
 ## 画幅与素材
-- 竖版 1080x1920；屏幕录制热讯工坊看板，搭配 AI 工具界面和脚本文档 B-roll。
+- {canvas}；屏幕录制热讯工坊看板，搭配 AI 工具界面和脚本文档 B-roll。
 - 字幕每 12-16 字断行，关键字高亮“AI员工”“工作区”“老板决策”。
 
 ## 配音与导出
 - 语速：每分钟 260-300 字；情绪：冷静、清晰、带一点兴奋。
-- `uv run --no-project --python 3.11.15 python mpt_agent.py --subject "{selected.title}"`
+- `uv run --no-project --python 3.11.15 python mpt_agent.py --subject "{selected.title}" -- --video-aspect "{mpt_aspect}"`
 """
                     result = await gateway.complete(
-                        system="你是视频剪辑员小李。输出可执行剪辑方案，包含工具出处、画幅、素材、字幕、配音和导出命令。",
-                        user=f"请根据脚本生成剪辑计划：\n{script_content}",
+                        system="你是视频剪辑员。输出可执行剪辑方案，包含工具出处、画幅、素材、字幕、配音和导出命令。",
+                        user=f"请根据脚本生成剪辑计划。成片画幅必须为 {canvas}：\n{script_content}",
                         fallback=edit_fallback,
                     )
                     # Models occasionally answer with a generic request for
@@ -2194,10 +2233,16 @@ async def run_hot_video_workflow(
                     pipeline_fallback = _video_edit_fallback(
                         selected.title,
                         script_content,
-                        {"duration_seconds": seed.duration_seconds, "format": "vertical"},
+                        {"duration_seconds": seed.duration_seconds, "format": seed.video_aspect},
                     )
                     edit_content = _ensure_video_edit_sections(result.content, pipeline_fallback)
-                    edit_content = await _append_video_generation(edit_content, selected.title)
+                    if canvas not in edit_content:
+                        edit_content += f"\n\n## 画幅校验\n- 总控制台指定画幅：{canvas}。导出前必须按此规格验收。"
+                    edit_content = await _append_video_generation(
+                        edit_content,
+                        selected.title,
+                        video_aspect=seed.video_aspect,
+                    )
                     save_output(
                         "video_editor",
                         "视频成片",
@@ -2216,7 +2261,7 @@ async def run_hot_video_workflow(
                     op_fallback = _operator_fallback(selected, cover_path)
                     result = await gateway.complete(
                         system=(
-                            "你是运营大师尤道理。输出完整的中文 Markdown 运营方案，必须包含：发布定位、"
+                            "你是运营大师。输出完整的中文 Markdown 运营方案，必须包含：发布定位、"
                             "抖音/视频号/小红书平台适配、封面与发布文案、评论与回复流程、可执行复盘清单、"
                             "来源与发布前核验、与文案助手的一致性检查。只承接脚本已有事实，不新增事实；"
                             "不要声称已经验证完播率、互动率、转化率、CTR、ROI 等效果。"

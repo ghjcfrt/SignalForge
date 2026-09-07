@@ -50,11 +50,12 @@ def main() -> None:
         "POST",
         {
             "execution_mode": "manual",
-            "seed": {"domain": "API smoke", "brief": "接口创建测试", "audience": "测试用户", "duration_seconds": 60},
+            "seed": {"domain": "API smoke", "brief": "接口创建测试", "audience": "测试用户", "duration_seconds": 60, "video_aspect": "horizontal"},
             "viral_analysis": {"source": "manual", "enabled": True, "manual_content": "仅用于接口冒烟测试"},
         },
     )
     assert status == 200 and run.get("status") == "queued" and run.get("id"), run
+    assert run["seed"]["video_aspect"] == "horizontal", run
 
     status, detail = request(f"/api/workflows/{run['id']}")
     assert status == 200 and detail.get("id") == run["id"], detail

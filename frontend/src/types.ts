@@ -71,6 +71,7 @@ export interface TopicSeed {
   brief: string;
   audience: string;
   duration_seconds: number;
+  video_aspect: "vertical" | "horizontal";
 }
 
 export interface Topic {
@@ -92,6 +93,12 @@ export interface AgentOutput {
   content: string;
   artifact_path: string;
   created_at: string;
+}
+
+export interface AgentTaskLog {
+  timestamp: string;
+  level: "info" | "success" | "error";
+  message: string;
 }
 
 export interface WorkflowLog {
@@ -132,6 +139,7 @@ export interface WorkflowRun {
   seed: TopicSeed;
   topics: Topic[];
   outputs: AgentOutput[];
+  standalone_outputs?: AgentOutput[];
   run_dir: string;
   created_at: string;
   completed_at: string | null;

@@ -13,7 +13,7 @@ def _workspace(agent_id: str) -> str:
 AGENTS: list[Agent] = [
     Agent(
         id="hotspot_monitor",
-        name="赵爽",
+        name="热点监控员",
         title="热点监控员",
         role="抓取 AI 圈、技术社区和创作者生态热点，辅助选题。",
         focus="热点舆情、搜索线索、选题初筛",
@@ -28,7 +28,7 @@ AGENTS: list[Agent] = [
     ),
     Agent(
         id="viral_analyst",
-        name="星辰",
+        name="爆款分析师",
         title="爆款分析师",
         role="分析爆款内容规律，拆解传播钩子、情绪冲突和受众动机。",
         focus="爆款结构、封面标题、传播因子",
@@ -43,7 +43,7 @@ AGENTS: list[Agent] = [
     ),
     Agent(
         id="copywriter",
-        name="洛一",
+        name="文案助手",
         title="文案助手",
         role="根据热点资料撰写短视频脚本，适配 90-120 秒结构。",
         focus="开场钩子、事件经过、总结转折、口播节奏",
@@ -51,7 +51,7 @@ AGENTS: list[Agent] = [
     ),
     Agent(
         id="video_editor",
-        name="小李",
+        name="视频剪辑员",
         title="视频剪辑员",
         role="根据脚本生成配音、镜头、字幕、素材和导出方案。",
         focus="自动剪辑、素材清单、1080P/4K 横竖版方案",
@@ -66,7 +66,7 @@ AGENTS: list[Agent] = [
     ),
     Agent(
         id="operator",
-        name="尤道理",
+        name="运营大师",
         title="运营大师",
         role="负责发布节奏、标题、封面话术、互动引导和复盘。",
         focus="运营策略、平台适配、发布计划",
@@ -81,7 +81,7 @@ AGENTS: list[Agent] = [
     ),
     Agent(
         id="product_manager",
-        name="方舟",
+        name="产品经理",
         title="产品经理",
         role="做产品调研、市场分析、需求总结和竞品分析。",
         focus="需求拆解、竞品研究、路线图",
@@ -96,7 +96,7 @@ AGENTS: list[Agent] = [
     ),
     Agent(
         id="programmer",
-        name="阿栈",
+        name="程序员",
         title="程序员",
         role="配合产品经理做项目开发和自动化工具落地。",
         focus="后端接口、脚本、自动化集成",
@@ -104,7 +104,7 @@ AGENTS: list[Agent] = [
     ),
     Agent(
         id="stock_assistant",
-        name="林量",
+        name="股票助手",
         title="股票助手",
         role="查看股票相关信息，辅助财经选题。",
         focus="行情摘要、财报线索、风险提示",
@@ -119,7 +119,7 @@ AGENTS: list[Agent] = [
     ),
     Agent(
         id="healer",
-        name="周周",
+        name="心理疗愈师",
         title="心理疗愈师",
         role="用于情感话题的沟通疏导和内容把关。",
         focus="情绪安抚、表达边界、心理话题安全",

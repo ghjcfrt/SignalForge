@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 
 export const navItems = [
-  { id: "overview", label: "总览", icon: LayoutDashboard },
+  { id: "overview", label: "控制台", icon: LayoutDashboard },
   { id: "agent_hotspot_monitor", label: "热点监控员", icon: Newspaper },
   { id: "agent_viral_analyst", label: "爆款分析师", icon: ChartNoAxesCombined },
   { id: "agent_copywriter", label: "文案助手", icon: PenLine },
@@ -51,35 +51,30 @@ export const pipeline = [
   {
     agentId: "hotspot_monitor",
     title: "热点监控员",
-    owner: "赵爽",
     action: "搜集热点",
     description: "追踪 AI 圈与开源社区线索。"
   },
   {
     agentId: "viral_analyst",
     title: "爆款分析师",
-    owner: "星辰",
     action: "拆解爆点",
     description: "判断钩子、冲突和传播风险。"
   },
   {
     agentId: "copywriter",
     title: "文案助手",
-    owner: "洛一",
     action: "写脚本",
     description: "产出 90-120 秒口播脚本。"
   },
   {
     agentId: "video_editor",
     title: "视频剪辑员",
-    owner: "小李",
     action: "做剪辑方案",
     description: "生成镜头、配音、字幕与导出设置。"
   },
   {
     agentId: "operator",
     title: "运营大师",
-    owner: "尤道理",
     action: "发布复盘",
     description: "准备标题、封面、评论和指标。"
   }

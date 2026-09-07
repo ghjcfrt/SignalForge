@@ -13,6 +13,7 @@ import type {
   TimeoutSettings,
   EnvSettings
   ,StockAnalysisResult
+  ,AgentTaskLog
 } from "./types";
 import type { OutputDirectorySettings } from "./types";
 
@@ -74,6 +75,11 @@ export function selectDirectory() {
   return request<{ path: string | null }>("/api/local/select-directory");
 }
 
+export function openArtifactsFolder(runId?: string | null) {
+  const query = runId ? `?run_id=${encodeURIComponent(runId)}` : "";
+  return request<{ path: string }>(`/api/local/open-artifacts${query}`);
+}
+
 export function fetchEnvSettings() {
   return request<EnvSettings>("/api/settings/env");
 }
@@ -85,11 +91,15 @@ export function updateEnvSettings(payload: Record<string, string | number | null
   });
 }
 
-export function runAgent(agentId: string, payload: { prompt?: string; settings?: Record<string, unknown> }) {
+export function runAgent(agentId: string, payload: { prompt?: string; settings?: Record<string, unknown>; timeout_seconds?: number; project_run_id?: string | null }) {
   return request<AgentOutput>(`/api/agents/${agentId}/run`, {
     method: "POST",
     body: JSON.stringify({ agent_id: agentId, ...payload })
   });
+}
+
+export function fetchAgentLogs(agentId: string) {
+  return request<AgentTaskLog[]>(`/api/agents/${agentId}/logs`);
 }
 
 export function runHotVideoWorkflow(seed: TopicSeed, execution_mode: "auto" | "step" | "manual" = "auto", viral_analysis?: ViralAnalysisConfig) {

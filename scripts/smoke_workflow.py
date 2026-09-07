@@ -23,7 +23,7 @@ class _Gateway:
         pass
 
     async def complete(self, system: str, user: str, fallback: str):
-        if "热点监控员赵爽" in system:
+        if "热点监控员" in system:
             return _Completion(
                 json.dumps(
                     {

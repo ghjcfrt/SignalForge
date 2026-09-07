@@ -2,7 +2,7 @@
  * @Author: ghjcfrt 73391769+ghjcfrt@users.noreply.github.com
  * @Date: 2026-08-23 03:00:36
  * @LastEditors: ghjcfrt 73391769+ghjcfrt@users.noreply.github.com
- * @LastEditTime: 2026-08-26 23:59:00
+ * @LastEditTime: 2026-09-08 03:03:36
  * @FilePath: \SignalForge\TODO
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 -->
@@ -11,7 +11,7 @@
 1. 内容生产流水线按阶段更新“待调度 / 执行中 / 已产出 / 失败”状态。
 2. 左侧每个岗位都有独立阶段卡片，支持自动完整执行和“执行下一步”手动模式。
 3. 任务检查点、阶段产物、运行日志和前端指令草稿自动保存。
-4. 每个任务生成 `run.log.jsonl`，界面可展开查看阶段日志。
+4. 每个任务生成 `run.log`，界面可展开查看阶段日志。
 5. 失败信息包含阶段、错误类型、服务商上下文和具体原因，并保留已完成产物。
 6. 支持从失败阶段或服务重启后的检查点继续，不重复生成已完成阶段。
 
@@ -61,3 +61,6 @@
 2. 为热点来源增加可配置的备用 RSS/本地 fixture，避免实时源暂时不可用时无法演示完整流水线；仍需保留双来源核验门槛。
 3. 为股票助手增加数据源健康检查、重试和缓存策略，并在前端展示“数据暂不可用”而不是笼统错误。
 4. 增加前端 Playwright 视觉回归与窄屏断点截图，持续检查导航、表单和流水线卡片排版。
+
+
+5. 控制台日志增加滑动条，老板指令增加视频格式，增加打开产物文件夹的按钮

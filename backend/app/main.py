@@ -1,6 +1,9 @@
 import json
 import asyncio
 import contextlib
+import os
+import subprocess
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -11,7 +14,7 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.agents import AGENTS, ensure_agent_workspaces
-from backend.app.config import get_env_settings, get_output_directory_settings, get_settings, get_timeout_settings, update_env_settings, update_output_directory_settings, update_timeout_settings
+from backend.app.config import WORKSPACE_DIR, get_env_settings, get_output_directory_settings, get_settings, get_timeout_settings, update_env_settings, update_output_directory_settings, update_timeout_settings
 from backend.app.directory_picker import directory_picker
 from backend.app.llm import LlmGateway
 from backend.app.schemas import (
@@ -61,6 +64,8 @@ from backend.app.video_tools import (
 
 app = FastAPI(title="热讯工坊 API", version="0.1.0")
 WORKFLOW_TASKS: dict[str, asyncio.Task] = {}
+AGENT_LOG_FILENAME = "agent.log"
+LEGACY_AGENT_LOG_FILENAME = "agent.log.jsonl"
 
 app.add_middleware(
     CORSMiddleware,
@@ -135,6 +140,31 @@ async def select_directory() -> dict[str, str | None]:
     return {"path": path}
 
 
+@app.get("/api/local/open-artifacts")
+async def open_artifacts_folder(run_id: str | None = None) -> dict[str, str]:
+    """Open the local folder containing workflow artifacts in the file manager."""
+    run = get_run(run_id) if run_id else None
+    if run_id and not run:
+        raise HTTPException(status_code=404, detail="Workflow run not found")
+
+    target = Path(run.run_dir).expanduser().resolve() if run else (WORKSPACE_DIR / "runs").resolve()
+    target.mkdir(parents=True, exist_ok=True)
+
+    def launch() -> None:
+        if os.name == "nt":
+            os.startfile(str(target))  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(target)])
+        else:
+            subprocess.Popen(["xdg-open", str(target)])
+
+    try:
+        await asyncio.to_thread(launch)
+    except OSError as exc:
+        raise HTTPException(status_code=502, detail=f"无法打开产物文件夹：{exc}") from exc
+    return {"path": str(target)}
+
+
 @app.get("/api/settings/env", response_model=EnvSettings)
 async def env_settings() -> EnvSettings:
     return get_env_settings()
@@ -173,12 +203,81 @@ async def scripts(request: GenerateScriptRequest) -> AgentOutput:
 
 @app.post("/api/agents/{agent_id}/run", response_model=AgentOutput)
 async def run_single_agent(agent_id: str, request: RunAgentRequest) -> AgentOutput:
+    _write_agent_log(agent_id, None, "info", "独立任务已开始")
     try:
-        return await run_agent(agent_id, request, get_settings())
+        # Clone the global settings for this request.  Console timeout changes
+        # must not leak into an employee workbench, and vice versa.
+        workbench_settings = get_settings().model_copy(update={
+            "workflow_timeout_seconds": request.timeout_seconds,
+            "news_fetch_timeout_seconds": request.timeout_seconds,
+            "model_timeout_seconds": request.timeout_seconds,
+        })
+        task = run_agent(agent_id, request, workbench_settings)
+        output = await task if request.timeout_seconds <= 0 else await asyncio.wait_for(task, timeout=request.timeout_seconds)
+        # Standalone workbench results are project artifacts when the caller
+        # supplied a project id.  Keep them separate from staged outputs so a
+        # pipeline stage can still be rerun independently.
+        if request.project_run_id:
+            project = get_run(request.project_run_id)
+            if project is not None:
+                project.standalone_outputs = [
+                    item for item in project.standalone_outputs
+                    if item.agent_id != output.agent_id
+                ]
+                project.standalone_outputs.append(output)
+                _checkpoint(project)
+        _write_agent_log(agent_id, output.artifact_path, "success", "独立任务已完成")
+        return output
+    except asyncio.TimeoutError as exc:
+        message = f"独立工作台超过设定超时 {request.timeout_seconds} 秒"
+        _write_agent_log(agent_id, None, "error", message)
+        raise HTTPException(status_code=504, detail=message) from exc
     except ValueError as exc:
+        _write_agent_log(agent_id, None, "error", str(exc))
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
+        _write_agent_log(agent_id, None, "error", str(exc))
         raise HTTPException(status_code=502, detail=f"{agent_id} 执行失败：{exc}") from exc
+
+
+def _agent_log_path(agent_id: str) -> Path:
+    """Return the canonical agent log path and migrate the previous JSONL filename."""
+    log_dir = WORKSPACE_DIR / "agent-logs" / agent_id
+    log_dir.mkdir(parents=True, exist_ok=True)
+    path = log_dir / AGENT_LOG_FILENAME
+    legacy_path = log_dir / LEGACY_AGENT_LOG_FILENAME
+    if legacy_path.exists():
+        if path.exists():
+            with legacy_path.open("rb") as source, path.open("ab") as destination:
+                destination.write(source.read())
+            legacy_path.unlink()
+        else:
+            legacy_path.replace(path)
+    return path
+
+
+def _write_agent_log(agent_id: str, artifact_path: str | None, level: str, message: str) -> None:
+    """Persist a per-employee log without mixing it into the console workflow log."""
+    path = _agent_log_path(agent_id)
+    entry = {"timestamp": datetime.now().astimezone().isoformat(), "level": level, "message": message, "artifact_path": artifact_path}
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+@app.get("/api/agents/{agent_id}/logs")
+async def agent_logs(agent_id: str) -> list[dict[str, object]]:
+    if agent_id not in {agent.id for agent in AGENTS}:
+        raise HTTPException(status_code=404, detail="未知员工")
+    path = _agent_log_path(agent_id)
+    if not path.exists():
+        return []
+    entries: list[dict[str, object]] = []
+    for line in path.read_text(encoding="utf-8").splitlines()[-100:]:
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return entries
 
 
 @app.post("/api/stocks/analyze", response_model=StockAnalysisResult)
