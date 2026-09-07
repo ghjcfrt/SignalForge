@@ -131,6 +131,8 @@ export interface StockAnalysisResult {
   data_script: string;
   news_enabled: boolean;
   disclaimer: string;
+  data_status?: "ok" | "partial" | "unavailable";
+  source_status?: Record<string, string>;
 }
 
 export interface WorkflowRun {

@@ -234,3 +234,5 @@ class StockAnalysisResult(BaseModel):
     data_script: str
     news_enabled: bool
     disclaimer: str
+    data_status: Literal["ok", "partial", "unavailable"] = "ok"
+    source_status: dict[str, str] = Field(default_factory=dict)

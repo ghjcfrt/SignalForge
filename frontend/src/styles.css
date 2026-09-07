@@ -1018,6 +1018,17 @@ button {
   list-style: none;
 }
 
+.stock-data-status {
+  margin: -4px 18px 14px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--accent);
+  background: #f1f7f3;
+  color: #3d5f4d;
+  font-size: 12px;
+}
+.stock-data-status.partial { border-color: #c38b2f; background: #fff7e8; color: #815c1d; }
+.stock-data-status.unavailable { border-color: #b95043; background: #fff0ed; color: #8c352d; }
+
 .output-item summary::-webkit-details-marker {
   display: none;
 }

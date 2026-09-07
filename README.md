@@ -59,11 +59,15 @@ Copy-Item .env.example .env
 | `NEWS_FETCH_TIMEOUT_SECONDS` | 否 | 热点抓取超时；`0` 表示不限时，默认 `90` |
 | `MODEL_TIMEOUT_SECONDS` | 否 | 模型调用超时；`0` 表示不限时，默认 `30` |
 | `WORKFLOW_TIMEOUT_SECONDS` | 否 | 完整工作流总时限；`0` 表示不限时，默认 `300`（视频剪辑员渲染阶段始终不限时） |
+| `NEWS_SOURCE_MODE` | 否 | 热点来源模式：`live`、`fixture` 或 `live_then_fixture` |
+| `NEWS_RSS_FEEDS` | 否 | 可配置 RSS，格式为 `名称|URL`，多个用逗号分隔 |
+| `NEWS_FIXTURE_PATH` | 否 | 热点离线 fixture JSON 路径，默认 `tests/fixtures/hotspots.json` |
 | `SOCIALDATAX_API_KEY` | 爆款分析可选 | SocialDataX API Key；从 [SocialDataX API Key 页面](https://socialdatax.com/dashboard/api-keys) 获取 |
 | `SOCIALDATAX_BASE_URL` | 否 | 默认 `https://mcp.socialdatax.com` |
 | `SOCIALDATAX_TIMEOUT_SECONDS` | 否 | SocialDataX 请求超时；`0` 表示不限时，默认 `60` |
 | `TUSHARE_TOKEN` | 否 | 股票数据增强 |
 | `TAVILY_API_KEY` / `SERPAPI_KEY` | 否 | 股票新闻增强 |
+| `STOCK_FETCH_RETRIES` / `STOCK_CACHE_TTL_SECONDS` | 否 | 股票数据有限重试次数和缓存时长 |
 
 超时也可以在前端“设置”页修改，保存到 `workspaces/runtime-settings.json`；运行中可在控制台点击“停止任务”。
 
@@ -75,6 +79,7 @@ Copy-Item .env.example .env
 | `GET /api/agents` | 获取岗位与 Skill 信息 |
 | `POST /api/topics/scout` | 扫描热点线索 |
 | `POST /api/stocks/analyze` | 股票分析 |
+| `GET /api/stocks/health` | 股票数据源健康状态、重试和缓存配置 |
 | `POST /api/workflows/hot-video` | 执行完整工作流 |
 | `GET /api/workflows`、`GET /api/workflows/{id}` | 查询任务 |
 | `POST /api/workflows/{id}/resume` | 从失败检查点继续 |

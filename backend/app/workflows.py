@@ -9,6 +9,8 @@ import os
 import subprocess
 import sys
 import re
+import importlib.util
+import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -16,7 +18,7 @@ from typing import Awaitable, TypeVar
 from uuid import uuid4
 
 from backend.app.agents import AGENT_BY_ID
-from backend.app.config import WORKSPACE_DIR, Settings, get_output_directory_settings, get_settings
+from backend.app.config import ROOT_DIR, WORKSPACE_DIR, Settings, get_output_directory_settings, get_settings
 from backend.app.llm import LlmGateway
 from backend.app.schemas import (
     AgentOutput,
@@ -51,6 +53,7 @@ NEWS_RSS_FEEDS = (
     ("BBC", "https://feeds.bbci.co.uk/news/rss.xml"),
     ("BBC 中文", "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"),
 )
+STOCK_ANALYSIS_CACHE: dict[tuple[str, int, bool], tuple[float, StockAnalysisResult]] = {}
 NEWS_SOURCE_WEIGHTS = {
     "weibo": 1.00,
     "wallstreetcn": 0.95,
@@ -614,10 +617,22 @@ def _validate_topics(topics: list[Topic], seed: TopicSeed | None = None) -> list
 
 
 async def _run_news_aggregator(timeout_seconds: int | None = None) -> list[dict]:
+    source_mode = str(get_settings().news_source_mode or "live_then_fixture").strip().lower()
+    if source_mode == "fixture":
+        return _load_news_fixture(get_settings().news_fixture_path)
     if timeout_seconds is None:
         timeout_seconds = get_settings().news_fetch_timeout_seconds
-    if not NEWS_FETCH.exists():
-        return await _run_builtin_news_aggregator(timeout_seconds)
+    try:
+        if not NEWS_FETCH.exists():
+            return await _run_builtin_news_aggregator(timeout_seconds)
+        return await _run_news_skill(timeout_seconds)
+    except Exception:
+        if source_mode != "live_then_fixture":
+            raise
+        return _load_news_fixture(get_settings().news_fixture_path)
+
+
+async def _run_news_skill(timeout_seconds: int) -> list[dict]:
     command = [
         sys.executable,
         str(NEWS_FETCH),
@@ -674,6 +689,43 @@ async def _run_news_aggregator(timeout_seconds: int | None = None) -> list[dict]
     return normalized
 
 
+def _configured_news_rss_feeds() -> tuple[tuple[str, str], ...]:
+    configured = str(get_settings().news_rss_feeds or "").strip()
+    if not configured:
+        return NEWS_RSS_FEEDS
+    feeds: list[tuple[str, str]] = []
+    for entry in configured.split(","):
+        name, separator, url = entry.partition("|")
+        if not separator:
+            url = name
+            name = urlparse(url).netloc or "RSS"
+        if url.strip().startswith(("http://", "https://")):
+            feeds.append((name.strip() or urlparse(url).netloc or "RSS", url.strip()))
+    return tuple(feeds) or NEWS_RSS_FEEDS
+
+
+def _load_news_fixture(path_value: str | None) -> list[dict]:
+    path = Path(path_value).expanduser() if path_value else ROOT_DIR / "tests" / "fixtures" / "hotspots.json"
+    if not path.is_absolute():
+        path = ROOT_DIR / path
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"热点 fixture 不可用：{path}（{exc}）") from exc
+    if not isinstance(payload, list):
+        raise RuntimeError(f"热点 fixture 必须是新闻列表：{path}")
+    normalized: list[dict] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        copy = dict(item, channel="local-fixture")
+        published = _parse_public_datetime(copy.get("pubdate") or copy.get("published_at") or copy.get("time"))
+        if published:
+            copy["pubdate"] = int(published.timestamp())
+        normalized.append(copy)
+    return normalized
+
+
 async def _run_builtin_news_aggregator(timeout_seconds: int) -> list[dict]:
     """Keep the radar usable when the optional news skill is not installed."""
     timeout = None if timeout_seconds <= 0 else timeout_seconds
@@ -709,12 +761,12 @@ async def _run_builtin_news_aggregator(timeout_seconds: int) -> list[dict]:
     try:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             responses = await asyncio.gather(
-                *(fetch_feed(client, name, url) for name, url in NEWS_RSS_FEEDS),
+                *(fetch_feed(client, name, url) for name, url in _configured_news_rss_feeds()),
                 return_exceptions=True,
             )
     except httpx.HTTPError as exc:
         raise RuntimeError(f"内置 RSS 热点回退网络错误：{exc}") from exc
-    for (name, _), response in zip(NEWS_RSS_FEEDS, responses):
+    for (name, _), response in zip(_configured_news_rss_feeds(), responses):
         if isinstance(response, Exception):
             errors.append(f"{name}: {response}")
         else:
@@ -927,6 +979,12 @@ def _socialdatax_context(notes: list[dict], *, label: str = "样本") -> str:
 
 async def analyze_stocks(request: StockAnalysisRequest, settings: Settings) -> StockAnalysisResult:
     """Run the installed Stock Analysis Skill for finance/stock requests."""
+    cache_key = (request.stocks.strip().upper(), request.days, request.include_news)
+    cached = STOCK_ANALYSIS_CACHE.get(cache_key)
+    if cached and settings.stock_cache_ttl_seconds > 0 and time.monotonic() - cached[0] < settings.stock_cache_ttl_seconds:
+        result = cached[1].model_copy(deep=True)
+        result.source_status = {**result.source_status, "cache": "hit"}
+        return result
     if not STOCK_DATA_SCRIPT.exists():
         raise FileNotFoundError(f"Stock Analysis Skill data script not found: {STOCK_DATA_SCRIPT}")
 
@@ -945,25 +1003,33 @@ async def analyze_stocks(request: StockAnalysisRequest, settings: Settings) -> S
     process_error: str | None = None
     stdout = b""
     stderr = b""
-    try:
-        completed = await asyncio.wait_for(
-            asyncio.to_thread(
-                subprocess.run,
-                command,
-                cwd=STOCK_SKILL_DIR,
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
-            ),
-            timeout=120,
-        )
-        stdout, stderr = completed.stdout or b"", completed.stderr or b""
-    except asyncio.TimeoutError:
-        process_error = "Stock Analysis Skill data fetch exceeded 120 seconds"
+    completed = None
+    for attempt in range(settings.stock_fetch_retries + 1):
+        try:
+            completed = await asyncio.wait_for(
+                asyncio.to_thread(
+                    subprocess.run,
+                    command,
+                    cwd=STOCK_SKILL_DIR,
+                    env=env,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                ),
+                timeout=120,
+            )
+            stdout, stderr = completed.stdout or b"", completed.stderr or b""
+            if completed.returncode == 0:
+                process_error = None
+                break
+            process_error = stderr.decode("utf-8", errors="replace").strip() or "Stock Analysis Skill returned a non-zero exit code"
+        except asyncio.TimeoutError:
+            process_error = "Stock Analysis Skill data fetch exceeded 120 seconds"
+        if attempt < settings.stock_fetch_retries:
+            await asyncio.sleep(min(2 ** attempt, 4))
 
     raw_text = stdout.decode("utf-8", errors="replace")
-    if process_error is None and completed.returncode != 0:
+    if process_error is None and completed is not None and completed.returncode != 0:
         process_error = stderr.decode("utf-8", errors="replace").strip() or raw_text.strip()
     try:
         raw_data = json.loads(raw_text)
@@ -998,7 +1064,18 @@ async def analyze_stocks(request: StockAnalysisRequest, settings: Settings) -> S
             + "\n\n> 免责声明：以上分析仅供参考，不构成投资建议。投资有风险，入市需谨慎。"
         ),
     )
-    return StockAnalysisResult(
+    source_status = {
+        str(name): str(status)
+        for name, status in (raw_data.get("data_sources") or {}).items()
+    } if isinstance(raw_data, dict) else {}
+    source_status["cache"] = "miss"
+    if process_error:
+        data_status = "unavailable"
+    elif isinstance(raw_data, dict) and raw_data.get("total_success", 0) < raw_data.get("total_requested", 0):
+        data_status = "partial"
+    else:
+        data_status = "ok"
+    result = StockAnalysisResult(
         skill_source="https://github.com/liusai0820/Stock-Analysis-Skill",
         stocks=request.stocks,
         report=result.content,
@@ -1006,7 +1083,27 @@ async def analyze_stocks(request: StockAnalysisRequest, settings: Settings) -> S
         data_script=str(STOCK_DATA_SCRIPT),
         news_enabled=request.include_news,
         disclaimer="以上分析仅供参考，不构成投资建议。投资有风险，入市需谨慎。",
+        data_status=data_status,
+        source_status=source_status,
     )
+    if data_status != "unavailable":
+        STOCK_ANALYSIS_CACHE[cache_key] = (time.monotonic(), result.model_copy(deep=True))
+    return result
+
+
+def stock_sources_health(settings: Settings) -> dict[str, object]:
+    libraries = {name: bool(importlib.util.find_spec(name)) for name in ("tushare", "efinance", "akshare", "yfinance")}
+    return {
+        "status": "ok" if any(libraries.values()) else "unavailable",
+        "libraries": {name: "available" if available else "not_installed" for name, available in libraries.items()},
+        "credentials": {
+            "tushare": "configured" if settings.tushare_token else "not_configured",
+            "tavily": "configured" if settings.tavily_api_key else "not_configured",
+            "serpapi": "configured" if settings.serpapi_key else "not_configured",
+        },
+        "retry_limit": settings.stock_fetch_retries,
+        "cache_ttl_seconds": settings.stock_cache_ttl_seconds,
+    }
 
 
 def _now() -> datetime:

@@ -40,6 +40,7 @@ from backend.app.workflows import (
     run_hot_video_workflow,
     scout_topics,
     analyze_stocks,
+    stock_sources_health,
     _load_persisted_runs,
     _ensure_workflow_state,
     create_workflow,
@@ -272,6 +273,11 @@ async def agent_logs(agent_id: str) -> list[dict[str, object]]:
 @app.post("/api/stocks/analyze", response_model=StockAnalysisResult)
 async def stocks(request: StockAnalysisRequest) -> StockAnalysisResult:
     return await analyze_stocks(request, get_settings())
+
+
+@app.get("/api/stocks/health")
+async def stocks_health() -> dict[str, object]:
+    return stock_sources_health(get_settings())
 
 
 @app.post("/api/workflows/hot-video", response_model=WorkflowRun)

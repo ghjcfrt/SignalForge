@@ -39,6 +39,7 @@ import {
   fetchWorkflows,
   cancelWorkflow,
   analyzeStocks,
+  fetchStockSourcesHealth,
   fetchMoneyPrinterTurboStatus,
   fetchStatus,
   fetchSystemStatus,
@@ -1038,6 +1039,11 @@ function StockAnalysisView() {
   const [result, setResult] = useState<StockAnalysisResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [health, setHealth] = useState<{ status: string; libraries: Record<string, string>; credentials: Record<string, string>; retry_limit: number; cache_ttl_seconds: number } | null>(null);
+
+  useEffect(() => {
+    fetchStockSourcesHealth().then(setHealth).catch(() => setHealth(null));
+  }, []);
 
   async function handleAnalyze() {
     setBusy(true);
@@ -1070,6 +1076,7 @@ function StockAnalysisView() {
             <input value={stocks} onChange={(event) => setStocks(event.target.value)} placeholder="600519, TSLA, HK00700" />
           </label>
         </div>
+        {health && <div className="control-message"><CheckCircle2 size={16} /><span>数据源：{health.status === "ok" ? "可用" : "暂不可用"} · 重试 {health.retry_limit} 次 · 缓存 {health.cache_ttl_seconds} 秒</span></div>}
         {message && <div className="control-message"><AlertCircle size={16} /><span>{message}</span></div>}
       </section>
       {result && (
@@ -1080,6 +1087,7 @@ function StockAnalysisView() {
               <p>数据脚本：{result.data_script} · 新闻抓取：{result.news_enabled ? "已启用" : "未启用"}</p>
             </div>
           </div>
+          {result.data_status && <div className={cn("stock-data-status", result.data_status)}>{result.data_status === "ok" ? "数据完整" : result.data_status === "partial" ? "部分数据可用" : "数据暂不可用"}{result.source_status?.cache === "hit" ? " · 使用缓存" : ""}</div>}
           <MarkdownContent content={result.report} className="stock-report-markdown" />
           <p className="risk-note">{result.disclaimer}</p>
         </section>

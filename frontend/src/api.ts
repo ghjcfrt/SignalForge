@@ -145,6 +145,10 @@ export function analyzeStocks(payload: { stocks: string; days?: number; include_
   });
 }
 
+export function fetchStockSourcesHealth() {
+  return request<{ status: string; libraries: Record<string, string>; credentials: Record<string, string>; retry_limit: number; cache_ttl_seconds: number }>("/api/stocks/health");
+}
+
 export function fetchMoneyPrinterTurboStatus() {
   return request<MoneyPrinterTurboStatus>("/api/video/moneyprinterturbo/status");
 }

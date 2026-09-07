@@ -63,6 +63,11 @@ class Settings(BaseSettings):
         ge=0,
         validation_alias=AliasChoices("MODEL_TIMEOUT_SECONDS"),
     )
+    news_source_mode: str = Field(default="live_then_fixture", alias="NEWS_SOURCE_MODE")
+    news_rss_feeds: str = Field(default="", alias="NEWS_RSS_FEEDS")
+    news_fixture_path: str | None = Field(default=None, alias="NEWS_FIXTURE_PATH")
+    stock_fetch_retries: int = Field(default=2, ge=0, le=5, alias="STOCK_FETCH_RETRIES")
+    stock_cache_ttl_seconds: int = Field(default=60, ge=0, le=3600, alias="STOCK_CACHE_TTL_SECONDS")
 
     @field_validator("ai_model", mode="before")
     @classmethod
