@@ -1,3 +1,11 @@
+/*
+ * @Author: ghjcfrt 73391769+ghjcfrt@users.noreply.github.com
+ * @Date: 2026-07-18 14:51:10
+ * @LastEditors: ghjcfrt 73391769+ghjcfrt@users.noreply.github.com
+ * @LastEditTime: 2026-09-08 04:01:21
+ * @FilePath: \SignalForge\frontend\src\data.ts
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 import {
   Bot,
   BriefcaseBusiness,
@@ -29,7 +37,6 @@ export const navItems = [
   { id: "agent_healer", label: "心理疗愈师", icon: HeartHandshake },
   { id: "radar", label: "热点雷达", icon: Radio },
   { id: "stocks", label: "股票分析", icon: TrendingUp },
-  { id: "scripts", label: "脚本工坊", icon: PenLine },
   { id: "editing", label: "剪辑队列", icon: Clapperboard },
   { id: "engagement", label: "互动回复", icon: MessageCircle },
   { id: "settings", label: "设置", icon: Settings }
@@ -52,7 +59,7 @@ export const pipeline = [
     agentId: "hotspot_monitor",
     title: "热点监控员",
     action: "搜集热点",
-    description: "追踪 AI 圈与开源社区线索。"
+    description: "独立搜集、排序并核验热点候选。"
   },
   {
     agentId: "viral_analyst",
@@ -64,13 +71,13 @@ export const pipeline = [
     agentId: "copywriter",
     title: "文案助手",
     action: "写脚本",
-    description: "产出 90-120 秒口播脚本。"
+    description: "产出短视频口播脚本"
   },
   {
     agentId: "video_editor",
     title: "视频剪辑员",
     action: "做剪辑方案",
-    description: "生成镜头、配音、字幕与导出设置。"
+    description: "生成剪辑、字幕和配音方案。"
   },
   {
     agentId: "operator",

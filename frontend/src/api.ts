@@ -75,9 +75,8 @@ export function selectDirectory() {
   return request<{ path: string | null }>("/api/local/select-directory");
 }
 
-export function openArtifactsFolder(runId?: string | null) {
-  const query = runId ? `?run_id=${encodeURIComponent(runId)}` : "";
-  return request<{ path: string }>(`/api/local/open-artifacts${query}`);
+export function openArtifactsFolder() {
+  return request<{ path: string }>("/api/local/open-artifacts");
 }
 
 export function fetchEnvSettings() {
@@ -136,18 +135,6 @@ export function scoutTopics(seed: TopicSeed) {
   return request<Topic[]>("/api/topics/scout", {
     method: "POST",
     body: JSON.stringify(seed)
-  });
-}
-
-export function generateScript(payload: {
-  topic: string;
-  angle: string;
-  duration_seconds: number;
-  audience: string;
-}) {
-  return request<AgentOutput>("/api/scripts/generate", {
-    method: "POST",
-    body: JSON.stringify(payload)
   });
 }
 

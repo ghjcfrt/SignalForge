@@ -12,6 +12,7 @@ import {
   Cpu,
   ExternalLink,
   FileText,
+  FolderOpen,
   HeartHandshake,
   KeyRound,
   Loader2,
@@ -27,8 +28,7 @@ import {
   Sparkles,
   Square,
   TrendingUp,
-  Video,
-  Wand2
+  Video
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -42,7 +42,6 @@ import {
   fetchMoneyPrinterTurboStatus,
   fetchStatus,
   fetchSystemStatus,
-  generateScript,
   restartBackend,
   runHotVideoWorkflow,
   runAgent,
@@ -61,6 +60,7 @@ import {
   ,fetchOutputDirectorySettings
   ,updateOutputDirectorySettings
   ,selectDirectory
+  ,openArtifactsFolder
   ,fetchEnvSettings
   ,updateEnvSettings
 } from "./api";
@@ -192,10 +192,6 @@ const viewMeta: Record<ViewId, { title: string; subtitle: string }> = {
     title: "股票分析",
     subtitle: "财经、股票和股票新闻统一走 Stock Analysis Skill。"
   },
-  scripts: {
-    title: "脚本工坊",
-    subtitle: "把热点角度变成 90-120 秒短视频口播脚本。"
-  },
   editing: {
     title: "剪辑队列",
     subtitle: "查看视频剪辑员生成的画幅、配音、字幕、素材和导出方案。"
@@ -307,8 +303,9 @@ function ShellNav({
 
       <div className="nav-scroll-area">
         <nav className="nav-list" aria-label="主导航">
+          {primaryItems.filter((item) => item.id === "overview").map((item) => renderNavItem(item))}
           <div className="nav-section-label">独立工作台</div>
-          {primaryItems.map((item) => renderNavItem(item))}
+          {primaryItems.filter((item) => item.id !== "overview").map((item) => renderNavItem(item))}
         </nav>
         <div className="nav-more-group">
           <details
@@ -383,7 +380,7 @@ function TopBar({
   );
 }
 
-function PipelineBoard({ run, running, onNew, onStep, onCancel, onRerun }: { run: WorkflowRun | null; running: boolean; onNew: () => void; onStep: () => void; onCancel: () => void; onRerun: (stage: string) => void }) {
+function PipelineBoard({ run, running, onNew, onStep, onCancel, onRerun, onOpenArtifacts }: { run: WorkflowRun | null; running: boolean; onNew: () => void; onStep: () => void; onCancel: () => void; onRerun: (stage: string) => void; onOpenArtifacts: () => void }) {
   const completedIds = new Set(run?.outputs.map((output) => output.agent_id) ?? []);
   const stageStatus = run?.stage_status ?? {};
   const statusLabels = { pending: "待调度", running: "执行中", completed: "已产出", failed: "失败" };
@@ -402,6 +399,10 @@ function PipelineBoard({ run, running, onNew, onStep, onCancel, onRerun }: { run
             <button className="ghost-button compact" onClick={onNew} disabled={running} type="button">
               <Plus size={15} />
               <span>新任务</span>
+            </button>
+            <button className="ghost-button compact" onClick={onOpenArtifacts} type="button" title="打开全部产物文件夹">
+              <FolderOpen size={15} />
+              <span>打开产物文件夹</span>
             </button>
             {run && run.status !== "completed" && <button className="ghost-button compact" onClick={onStep} disabled={running} type="button">执行下一步</button>}
             {running && <button className="danger-button compact" onClick={onCancel} type="button"><Square size={15} /><span>停止任务</span></button>}
@@ -454,14 +455,10 @@ function PipelineBoard({ run, running, onNew, onStep, onCancel, onRerun }: { run
 
 function SeedPanel({
   seed,
-  onChange,
-  onScript,
-  scriptBusy
+  onChange
 }: {
   seed: TopicSeed;
   onChange: (seed: TopicSeed) => void;
-  onScript: () => void;
-  scriptBusy: boolean;
 }) {
   return (
     <section className="panel seed-panel">
@@ -507,10 +504,6 @@ function SeedPanel({
         <ChartNoAxesCombined size={16} />
         <span>总控制台的爆款分析设置请前往“设置”页；<br />左侧员工页只影响对应独立工作台。</span>
       </div>
-      <button className="ghost-button" onClick={onScript} disabled={scriptBusy}>
-        {scriptBusy ? <Loader2 className="spin" size={17} /> : <Wand2 size={17} />}
-        <span>{scriptBusy ? "生成中" : "只生成脚本"}</span>
-      </button>
     </section>
   );
 }
@@ -612,6 +605,7 @@ function OutputList({ outputs }: { outputs: AgentOutput[] }) {
             <summary>
               <span>{agentTitle(output.agent_id)}</span>
               <small>{output.artifact_path}</small>
+              <ChevronRight className="output-item-chevron" size={16} aria-hidden="true" />
             </summary>
             <MarkdownContent content={output.content} />
             {output.agent_id === "operator" && (() => {
@@ -684,34 +678,6 @@ function RadarView({ topics, seed, onChange, onRun, running }: {
         </div>
       </section>
       <TopicList topics={topics} />
-    </div>
-  );
-}
-
-function ScriptStudioView({
-  seed,
-  onChange,
-  onScript,
-  scriptBusy,
-  outputs
-}: {
-  seed: TopicSeed;
-  onChange: (seed: TopicSeed) => void;
-  onScript: () => void;
-  scriptBusy: boolean;
-  outputs: AgentOutput[];
-}) {
-  const scriptOutputs = outputs.filter((output) => output.agent_id === "copywriter");
-
-  return (
-    <div className="studio-grid">
-      <SeedPanel
-        seed={seed}
-        onChange={onChange}
-        onScript={onScript}
-        scriptBusy={scriptBusy}
-      />
-      <OutputList outputs={scriptOutputs} />
     </div>
   );
 }
@@ -1596,14 +1562,13 @@ function OverviewView({
   running,
   seed,
   setSeed,
-  handleScript,
-  scriptBusy,
   agents,
   outputs,
   onNew,
   onStep,
   onCancel,
   onRerun,
+  onOpenArtifacts,
   selectedTopicTitle,
   onSelectTopic
 }: {
@@ -1611,21 +1576,20 @@ function OverviewView({
   running: boolean;
   seed: TopicSeed;
   setSeed: (seed: TopicSeed) => void;
-  handleScript: () => void;
-  scriptBusy: boolean;
   agents: Agent[];
   outputs: AgentOutput[];
   onNew: () => void;
   onStep: () => void;
   onCancel: () => void;
   onRerun: (stage: string) => void;
+  onOpenArtifacts: () => void;
   selectedTopicTitle: string | null;
   onSelectTopic: (title: string | null) => void;
 }) {
   return (
     <div className="content-grid">
       <div className="left-stack">
-        <PipelineBoard run={run} running={running} onNew={onNew} onStep={onStep} onCancel={onCancel} onRerun={onRerun} />
+        <PipelineBoard run={run} running={running} onNew={onNew} onStep={onStep} onCancel={onCancel} onRerun={onRerun} onOpenArtifacts={onOpenArtifacts} />
         <TopicList run={run} selectable={run?.status === "paused" && run.stage_status?.hotspot_monitor === "completed" && run.stage_status?.viral_analyst !== "completed"} selectedTitle={selectedTopicTitle} onSelect={onSelectTopic} />
         <OutputList outputs={outputs} />
       </div>
@@ -1633,8 +1597,6 @@ function OverviewView({
         <SeedPanel
           seed={seed}
           onChange={setSeed}
-          onScript={handleScript}
-          scriptBusy={scriptBusy}
         />
         <AgentRoster agents={agents} />
       </div>
@@ -1654,9 +1616,7 @@ export default function App() {
   const [run, setRun] = useState<WorkflowRun | null>(readSavedRun);
   const [selectedTopicTitle, setSelectedTopicTitle] = useState<string | null>(() => readSaved< string | null>("signalforge.selectedTopicTitle", null));
   const [radarTopics, setRadarTopics] = useState<Topic[]>([]);
-  const [extraOutputs, setExtraOutputs] = useState<AgentOutput[]>([]);
   const [running, setRunning] = useState(false);
-  const [scriptBusy, setScriptBusy] = useState(false);
   const [closing, setClosing] = useState(false);
   const [shutdownComplete, setShutdownComplete] = useState(false);
   const [systemStatusSnapshot, setSystemStatusSnapshot] = useState<SystemStatus | null>(null);
@@ -1718,8 +1678,8 @@ export default function App() {
   }, [run?.id, run?.standalone_outputs]);
 
   const outputs = useMemo(() => {
-    return [...extraOutputs, ...(run?.outputs ?? [])];
-  }, [extraOutputs, run]);
+    return run?.outputs ?? [];
+  }, [run]);
 
   async function refreshBackendData(options: { showErrors?: boolean } = {}) {
     try {
@@ -1922,21 +1882,16 @@ export default function App() {
     }
   }
 
-  async function handleScript() {
-    setScriptBusy(true);
+  async function handleOpenArtifacts() {
     setError(null);
     try {
-      const output = await generateScript({
-        topic: seed.brief,
-        angle: seed.domain,
-        duration_seconds: seed.duration_seconds,
-        audience: seed.audience
-      });
-      setExtraOutputs((items) => [output, ...items]);
+      const result = await openArtifactsFolder();
+      // Keep the path available in the console when the native file manager
+      // cannot be launched (for example on a headless development host).
+      setError(null);
+      void result;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "脚本生成失败");
-    } finally {
-      setScriptBusy(false);
+      setError(err instanceof Error ? err.message : "打开产物文件夹失败");
     }
   }
 
@@ -1991,14 +1946,13 @@ export default function App() {
             running={running}
             seed={seed}
             setSeed={setSeed}
-            handleScript={handleScript}
-            scriptBusy={scriptBusy}
             agents={agents}
             outputs={outputs}
             onNew={handleNewTask}
             onStep={handleStep}
             onCancel={handleCancel}
             onRerun={handleRerun}
+            onOpenArtifacts={handleOpenArtifacts}
             selectedTopicTitle={selectedTopicTitle}
             onSelectTopic={handleSelectTopic}
           />
@@ -2007,15 +1961,6 @@ export default function App() {
           <RadarView topics={radarTopics} seed={seed} onChange={setSeed} onRun={handleRadarScan} running={running} />
         )}
         {activeView === "stocks" && <StockAnalysisView />}
-        {activeView === "scripts" && (
-          <ScriptStudioView
-            seed={seed}
-            onChange={setSeed}
-            onScript={handleScript}
-            scriptBusy={scriptBusy}
-            outputs={outputs}
-          />
-        )}
         {activeView === "editing" && <EditingQueueView outputs={outputs} seed={seed} />}
         {activeView === "engagement" && <EngagementView agents={agents} />}
         {activeView === "settings" && <SettingsView status={status} currentRun={run} viralAnalysis={viralAnalysis} onViralAnalysisChange={setViralAnalysis} systemStatusSnapshot={systemStatusSnapshot} onSystemStatusSnapshotChange={setSystemStatusSnapshot} onImport={(imported) => { importedRunRef.current = imported.id; setRun(imported); setSelectedTopicTitle(imported.selected_topic_title ?? null); setAgentOutputs(Object.fromEntries((imported.standalone_outputs ?? []).map((output) => [output.agent_id, output]))); }} onBackendStateChange={() => refreshBackendData()} />}

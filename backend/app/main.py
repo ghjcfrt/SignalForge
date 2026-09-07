@@ -21,7 +21,6 @@ from backend.app.schemas import (
     ApiStatus,
     Agent,
     AgentOutput,
-    GenerateScriptRequest,
     RunWorkflowRequest,
     RunAgentRequest,
     Topic,
@@ -36,7 +35,6 @@ from backend.app.schemas import (
     StepWorkflowRequest,
 )
 from backend.app.workflows import (
-    generate_script,
     get_run,
     list_runs,
     run_hot_video_workflow,
@@ -141,13 +139,9 @@ async def select_directory() -> dict[str, str | None]:
 
 
 @app.get("/api/local/open-artifacts")
-async def open_artifacts_folder(run_id: str | None = None) -> dict[str, str]:
-    """Open the local folder containing workflow artifacts in the file manager."""
-    run = get_run(run_id) if run_id else None
-    if run_id and not run:
-        raise HTTPException(status_code=404, detail="Workflow run not found")
-
-    target = Path(run.run_dir).expanduser().resolve() if run else (WORKSPACE_DIR / "runs").resolve()
+async def open_artifacts_folder() -> dict[str, str]:
+    """Open the parent folder containing every workflow run's artifacts."""
+    target = (WORKSPACE_DIR / "runs").resolve()
     target.mkdir(parents=True, exist_ok=True)
 
     def launch() -> None:
@@ -194,11 +188,6 @@ async def topics(seed: TopicSeed) -> list[Topic]:
         raise HTTPException(status_code=504, detail="热点扫描超过工作流总时限，已停止") from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-
-@app.post("/api/scripts/generate", response_model=AgentOutput)
-async def scripts(request: GenerateScriptRequest) -> AgentOutput:
-    return await generate_script(request, get_settings())
 
 
 @app.post("/api/agents/{agent_id}/run", response_model=AgentOutput)

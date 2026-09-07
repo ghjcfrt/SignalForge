@@ -10,7 +10,7 @@
 - 热点雷达：调用 `news-aggregator-skill` 抓取公开来源，并要求模型基于来源整理选题。
 - 真实性门禁：至少两个不同域名的独立来源交叉验证后，热点才会进入后续生产阶段；否则任务停止并保留失败检查点。
 - 爆款分析：针对已核验选题调用 SocialDataX 小红书笔记搜索，按高互动样本拆解标题、内容结构和传播钩子；该接口只用于爆款分析，不参与新闻抓取或事实核验。
-- 脚本工坊：单独生成指定主题的短视频脚本，默认目标时长为 30–240 秒。
+- 文案助手：在完整流水线或员工独立工作台中生成短视频脚本。
 - 股票分析：调用 `stock-analysis` Skill 生成股票/财经分析，可选接入 Tushare、Tavily、SerpApi。
 - 剪辑队列：生成 MoneyPrinterTurbo 剪辑方案，并可调用其 helper 尝试真实成片。
 - 互动回复、员工、设置：展示岗位信息、评论处理样例、AI 状态、超时设置、项目导入导出和本地服务控制；员工独立工作台的最新产物也会随当前项目导出，并在导入后恢复。
@@ -74,7 +74,6 @@ Copy-Item .env.example .env
 | `GET /api/health`、`GET /api/status` | 健康检查和 AI 模式诊断 |
 | `GET /api/agents` | 获取岗位与 Skill 信息 |
 | `POST /api/topics/scout` | 扫描热点线索 |
-| `POST /api/scripts/generate` | 单独生成脚本 |
 | `POST /api/stocks/analyze` | 股票分析 |
 | `POST /api/workflows/hot-video` | 执行完整工作流 |
 | `GET /api/workflows`、`GET /api/workflows/{id}` | 查询任务 |
