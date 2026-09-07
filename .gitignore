@@ -5,6 +5,7 @@ __pycache__/
 .ruff_cache/
 .pytest_cache/
 .tmp-skill-check/
+.tmp-*
 .history/
 
 frontend/node_modules/
@@ -19,3 +20,4 @@ workspaces/agent-logs/
 workspaces/runtime-settings.json
 workspaces/*.png
 *.log
+%SystemDrive%/
