@@ -1,6 +1,7 @@
 import json
 import sys
 
+# 中文说明：函数「process_data」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def process_data():
     try:
         with open('reports/2026-02-02/general_data_raw.json', 'r') as f:

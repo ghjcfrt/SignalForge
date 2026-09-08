@@ -14,6 +14,7 @@ from pathlib import Path
 SCRIPTS_DIR = Path(__file__).parent
 
 
+# 中文说明：函数「fetch_platform_data」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_platform_data(keyword: str, platform: str, limit: int = 200) -> list:
     """调用同目录爬虫脚本获取平台数据"""
     script_map = {
@@ -46,6 +47,7 @@ def fetch_platform_data(keyword: str, platform: str, limit: int = 200) -> list:
     return []
 
 
+# 中文说明：函数「extract_keywords_from_content」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def extract_keywords_from_content(content_list: list) -> dict:
     """从内容中提取高频关键词"""
     word_freq = {}
@@ -61,6 +63,7 @@ def extract_keywords_from_content(content_list: list) -> dict:
     return dict(sorted_words[:30])
 
 
+# 中文说明：函数「calculate_industry_metrics」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def calculate_industry_metrics(data_by_platform: dict) -> dict:
     """计算行业指标"""
     total_items = sum(len(v) for v in data_by_platform.values())
@@ -96,6 +99,7 @@ def calculate_industry_metrics(data_by_platform: dict) -> dict:
     }
 
 
+# 中文说明：函数「generate_report」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def generate_report(industry: str, brand: str, data_by_platform: dict,
                     metrics: dict, keywords: dict) -> str:
     """生成行业分析报告"""
@@ -144,6 +148,7 @@ def generate_report(industry: str, brand: str, data_by_platform: dict,
 ## 三、高频关键词
 
 {keyword_section}
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
 
 ---
 
@@ -192,6 +197,7 @@ def generate_report(industry: str, brand: str, data_by_platform: dict,
     return report
 
 
+# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     parser = argparse.ArgumentParser(description="行业分析工具")
     parser.add_argument("--industry", required=True, help="行业名称，如 护肤品")
@@ -219,6 +225,7 @@ def main():
         data = fetch_platform_data(keyword, platform, args.limit)
         if data:
             data_by_platform[platform] = data
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
 
     if not data_by_platform:
         print("❌ 未获取到任何数据，请检查网络或爬虫脚本")

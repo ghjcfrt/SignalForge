@@ -10,6 +10,7 @@ from datetime import datetime
 # Suppress insecure request warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# 中文说明：函数「clean_text」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def clean_text(text):
     if not text: return ""
     text = text.strip()
@@ -17,6 +18,7 @@ def clean_text(text):
     text = re.sub(r'^\s*<!\[CDATA\[|\]\]>\s*$', '', text).strip()
     return text
 
+# 中文说明：函数「parse_rss_content」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def parse_rss_content(content, source_name, limit=5):
     """
     Parses RSS/Atom content string (XML or HTML) and returns items.
@@ -59,6 +61,7 @@ def parse_rss_content(content, source_name, limit=5):
             description = entry.find('description')
             summary = entry.find('summary')
             content = entry.find('content')
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
             
             raw_summary = ""
             if content_encoded: raw_summary = content_encoded.get_text()
@@ -91,6 +94,7 @@ def parse_rss_content(content, source_name, limit=5):
         print(f"Content Parse failed: {e}", file=sys.stderr)
         return []
 
+# 中文说明：函数「fetch_rss_feed」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_rss_feed(url, source_name, limit=5):
     """
     Robust RSS/Atom fetcher using BeautifulSoup.

@@ -122,11 +122,13 @@ const statusText = {
   "local-template": "本地模板"
 };
 
+// 中文说明：函数「cn」负责完成该界面的状态处理、交互逻辑或数据转换。
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
 /** Render model-produced Markdown consistently across every result surface. */
+// 中文说明：函数「MarkdownContent」负责完成该界面的状态处理、交互逻辑或数据转换。
 function MarkdownContent({ content, className }: { content: string; className?: string }) {
   return (
     <div className={cn("markdown-content", className)}>
@@ -137,6 +139,7 @@ function MarkdownContent({ content, className }: { content: string; className?: 
 
 // A stale browser snapshot can outlive the backend filter. Keep collection
 // diagnostics out of the visible candidate cards until the server refreshes.
+// 中文说明：函数「isDiagnosticTopic」负责完成该界面的状态处理、交互逻辑或数据转换。
 function isDiagnosticTopic(topic: Topic): boolean {
   const text = `${topic.title} ${topic.source_hint} ${topic.angle}`.toLowerCase();
   return /(缺乏可用来源|不构成.{0,12}(热点|候选)|本批次|仅检测到|未出现|来源不足|模型未返回|报错|(?:执行|请求|抓取|来源|模型|搜索|接口).{0,8}(?:失败|错误|超时)|(?:失败|错误|超时).{0,8}(?:执行|请求|抓取|来源|模型|搜索|接口)|\b(error|failed|failure|exception|timeout)\b)/i.test(text);
@@ -151,6 +154,7 @@ function readSaved<T>(key: string, fallback: T): T {
   }
 }
 
+// 中文说明：函数「readSavedRun」负责完成该界面的状态处理、交互逻辑或数据转换。
 function readSavedRun(): WorkflowRun | null {
   const saved = readSaved<WorkflowRun | null>("signalforge.currentRun", null);
   if (!saved || saved.status !== "running") return saved;
@@ -165,11 +169,13 @@ function readSavedRun(): WorkflowRun | null {
   };
 }
 
+// 中文说明：函数「readSavedView」负责完成该界面的状态处理、交互逻辑或数据转换。
 function readSavedView(): ViewId {
   const saved = readSaved<string>("signalforge.activeView", "overview");
   return navItems.some((item) => item.id === saved) ? saved as ViewId : "overview";
 }
 
+// 中文说明：函数「readViralAnalysis」负责完成该界面的状态处理、交互逻辑或数据转换。
 function readViralAnalysis(): ViralAnalysisConfig {
   const saved = readSaved<Partial<ViralAnalysisConfig>>("signalforge.viralAnalysis", {});
   return {
@@ -228,10 +234,12 @@ const employeeIds = [
   "healer"
 ] as const;
 
+// 中文说明：函数「employeeIdFromView」负责完成该界面的状态处理、交互逻辑或数据转换。
 function employeeIdFromView(view: ViewId): string | null {
   return view.startsWith("agent_") ? view.slice("agent_".length) : null;
 }
 
+// 中文说明：函数「formatWorkflowError」负责完成该界面的状态处理、交互逻辑或数据转换。
 function formatWorkflowError(run: WorkflowRun, fallback = "") {
   let detail = run.error || fallback;
   if (run.current_stage) {
@@ -245,6 +253,7 @@ function formatWorkflowError(run: WorkflowRun, fallback = "") {
   return detail.replace(/来源状态：\s*/, "来源状态：\n").replace(/;\s+/g, "\n");
 }
 
+// 中文说明：函数「ShellNav」负责完成该界面的状态处理、交互逻辑或数据转换。
 function ShellNav({
   activeView,
   onViewChange,
@@ -276,6 +285,7 @@ function ShellNav({
     if (moreViewIds.has(activeView)) setMoreOpen(true);
   }, [activeView]);
 
+  // 中文说明：函数「renderNavItem」负责完成该界面的状态处理、交互逻辑或数据转换。
   const renderNavItem = (item: (typeof navItems)[number], subItem = false) => {
     const Icon = item.icon;
     return (
@@ -301,6 +311,8 @@ function ShellNav({
           <span>AI 一人公司</span>
         </div>
       </div>
+      {/* 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。 */}
+  // 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。
 
       <div className="nav-scroll-area">
         <nav className="nav-list" aria-label="主导航">
@@ -344,6 +356,7 @@ function ShellNav({
   );
 }
 
+// 中文说明：函数「TopBar」负责完成该界面的状态处理、交互逻辑或数据转换。
 function TopBar({
   activeView,
   status,
@@ -381,6 +394,7 @@ function TopBar({
   );
 }
 
+// 中文说明：函数「PipelineBoard」负责完成该界面的状态处理、交互逻辑或数据转换。
 function PipelineBoard({ run, running, onNew, onStep, onCancel, onRerun, onOpenArtifacts }: { run: WorkflowRun | null; running: boolean; onNew: () => void; onStep: () => void; onCancel: () => void; onRerun: (stage: string) => void; onOpenArtifacts: () => void }) {
   const completedIds = new Set(run?.outputs.map((output) => output.agent_id) ?? []);
   const stageStatus = run?.stage_status ?? {};
@@ -424,6 +438,8 @@ function PipelineBoard({ run, running, onNew, onStep, onCancel, onRerun, onOpenA
           {run.log_file && <small className="log-path">日志文件：{run.log_file}</small>}
         </details>
       ) : null}
+      {/* 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。 */}
+  // 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。
 
       <div className="pipeline-grid">
         {pipeline.map((stage, index) => {
@@ -454,6 +470,7 @@ function PipelineBoard({ run, running, onNew, onStep, onCancel, onRerun, onOpenA
   );
 }
 
+// 中文说明：函数「SeedPanel」负责完成该界面的状态处理、交互逻辑或数据转换。
 function SeedPanel({
   seed,
   onChange
@@ -509,6 +526,7 @@ function SeedPanel({
   );
 }
 
+// 中文说明：函数「AgentRoster」负责完成该界面的状态处理、交互逻辑或数据转换。
 function AgentRoster({ agents }: { agents: Agent[] }) {
   const pipelineIds = new Set(pipeline.map((stage) => stage.agentId));
   const groups = [
@@ -548,7 +566,9 @@ function AgentRoster({ agents }: { agents: Agent[] }) {
   );
 }
 
+// 中文说明：函数「TopicList」负责完成该界面的状态处理、交互逻辑或数据转换。
 function TopicList({ run, topics, selectable, selectedTitle, onSelect }: { run?: WorkflowRun | null; topics?: Topic[]; selectable?: boolean; selectedTitle?: string | null; onSelect?: (title: string | null) => void }) {
+  // 中文说明：函数「items」负责完成该界面的状态处理、交互逻辑或数据转换。
   const items = (topics ?? run?.topics ?? []).filter((topic) => !isDiagnosticTopic(topic));
   return (
     <section className="panel topics-panel">
@@ -585,7 +605,9 @@ function TopicList({ run, topics, selectable, selectedTitle, onSelect }: { run?:
   );
 }
 
+// 中文说明：函数「OutputList」负责完成该界面的状态处理、交互逻辑或数据转换。
 function OutputList({ outputs }: { outputs: AgentOutput[] }) {
+  // 中文说明：函数「agentTitle」负责完成该界面的状态处理、交互逻辑或数据转换。
   const agentTitle = (agentId: string) => {
     const pipelineStage = pipeline.find((stage) => stage.agentId === agentId);
     if (pipelineStage) return pipelineStage.title;
@@ -627,6 +649,7 @@ function OutputList({ outputs }: { outputs: AgentOutput[] }) {
   );
 }
 
+// 中文说明：函数「SettingsStrip」负责完成该界面的状态处理、交互逻辑或数据转换。
 function SettingsStrip({ status, collapsed, onToggle }: { status: ApiStatus | null; collapsed: boolean; onToggle: () => void }) {
   return (
     <section className={cn("settings-strip", collapsed && "collapsed")} aria-label="AI 运行状态">
@@ -643,6 +666,7 @@ function SettingsStrip({ status, collapsed, onToggle }: { status: ApiStatus | nu
   );
 }
 
+// 中文说明：函数「RadarView」负责完成该界面的状态处理、交互逻辑或数据转换。
 function RadarView({ topics, seed, onChange, onRun, running }: {
   topics: Topic[];
   seed: TopicSeed;
@@ -683,6 +707,7 @@ function RadarView({ topics, seed, onChange, onRun, running }: {
   );
 }
 
+// 中文说明：函数「EditingQueueView」负责完成该界面的状态处理、交互逻辑或数据转换。
 function EditingQueueView({ outputs, seed }: { outputs: AgentOutput[]; seed: TopicSeed }) {
   const editingOutputs = outputs.filter((output) => ["video_editor", "operator"].includes(output.agent_id));
   const [mptStatus, setMptStatus] = useState<MoneyPrinterTurboStatus | null>(null);
@@ -738,6 +763,8 @@ function EditingQueueView({ outputs, seed }: { outputs: AgentOutput[]; seed: Top
         </div>
         {!!missingEnv.length && (
           <div className="missing-env">
+  // 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。
+            {/* 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。 */}
             <AlertCircle size={16} />
             <div>
               <strong>真实成片需要配置以下服务：</strong>
@@ -795,6 +822,7 @@ function EditingQueueView({ outputs, seed }: { outputs: AgentOutput[]; seed: Top
   );
 }
 
+// 中文说明：函数「AgentsView」负责完成该界面的状态处理、交互逻辑或数据转换。
 function AgentsView({ agents }: { agents: Agent[] }) {
   return (
     <section className="panel agent-detail-panel">
@@ -838,6 +866,7 @@ function AgentsView({ agents }: { agents: Agent[] }) {
   );
 }
 
+// 中文说明：函数「EmployeeWorkbench」负责完成该界面的状态处理、交互逻辑或数据转换。
 function EmployeeWorkbench({
   agent,
   seed: initialSeed,
@@ -885,6 +914,7 @@ function EmployeeWorkbench({
   }, [agent.id]);
   useEffect(() => { window.localStorage.setItem(`signalforge.employee.${agent.id}.form`, JSON.stringify({ prompt, videoFormat, editingRequirements, outputDir, timeoutSeconds })); }, [agent.id, prompt, videoFormat, editingRequirements, outputDir, timeoutSeconds]);
 
+  // 中文说明：函数「submit」负责完成该界面的状态处理、交互逻辑或数据转换。
   function submit() {
     onRun(prompt, {
       domain: seed.domain,
@@ -908,6 +938,8 @@ function EmployeeWorkbench({
     <div className={cn("employee-workbench", isViral && "viral-workbench")}>
       <section className="panel employee-hero">
         <div className="stage-head">
+  // 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。
+          {/* 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。 */}
           <div className="stage-icon"><Icon size={20} /></div>
         </div>
         <div className="employee-hero-copy">
@@ -987,11 +1019,13 @@ const initialComments: EngagementComment[] = [
   { id: "c-104", author: "晚风", content: "看完视频感觉被理解了，谢谢你们认真做这样的内容。", source: "视频评论区 · 《给低能量的你》", time: "36 分钟前", category: "情绪支持", assignedAgentId: "healer", priority: "普通", status: "待回复" }
 ];
 
+// 中文说明：函数「EngagementView」负责完成该界面的状态处理、交互逻辑或数据转换。
 function EngagementView({ agents }: { agents: Agent[] }) {
   const [comments, setComments] = useState(initialComments);
   const [selectedId, setSelectedId] = useState(initialComments[0].id);
   const [draft, setDraft] = useState("");
   const selected = comments.find((comment) => comment.id === selectedId) ?? comments[0];
+  // 中文说明：函数「agentName」负责完成该界面的状态处理、交互逻辑或数据转换。
   const agentName = (id: string) => agents.find((agent) => agent.id === id)?.title ?? id;
 
   useEffect(() => {
@@ -999,6 +1033,7 @@ function EngagementView({ agents }: { agents: Agent[] }) {
     setDraft(selected.status === "已回复" ? "已完成回复，可继续编辑" : selected.category === "情绪支持" ? "听起来你最近承受了不少压力，谢谢你愿意把这份感受说出来。可以先从今天最困扰你的一个小片段开始，给自己一点喘息的空间；如果这种疲惫持续影响生活，也建议找专业咨询师聊聊。" : "感谢你的留言，我们会把这个问题记录下来并持续完善。你也可以告诉我们更具体的使用场景。 ");
   }, [selectedId, selected?.status, selected?.category]);
 
+  // 中文说明：函数「sendReply」负责完成该界面的状态处理、交互逻辑或数据转换。
   function sendReply() {
     if (!selected || !draft.trim() || selected.status === "已回复") return;
     setComments((items) => items.map((item) => item.id === selected.id ? { ...item, status: "已回复" } : item));
@@ -1034,6 +1069,7 @@ function EngagementView({ agents }: { agents: Agent[] }) {
   );
 }
 
+// 中文说明：函数「StockAnalysisView」负责完成该界面的状态处理、交互逻辑或数据转换。
 function StockAnalysisView() {
   const [stocks, setStocks] = useState("600519");
   const [result, setResult] = useState<StockAnalysisResult | null>(null);
@@ -1064,6 +1100,8 @@ function StockAnalysisView() {
           <div>
             <h2>股票助手 · Stock Analysis Skill</h2>
             <p>财经、股票和股票新闻请求默认调用此 Skill。支持 A 股、港股、美股。</p>
+  // 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。
+          {/* 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。 */}
           </div>
           <button className="primary-button" onClick={handleAnalyze} disabled={busy || !stocks.trim()} type="button">
             {busy ? <Loader2 className="spin" size={18} /> : <TrendingUp size={18} />}
@@ -1098,6 +1136,7 @@ function StockAnalysisView() {
 
 type ControlAction = "backend-start" | "backend-stop" | "backend-restart" | "frontend-stop";
 
+// 中文说明：函数「ServiceCard」负责完成该界面的状态处理、交互逻辑或数据转换。
 function ServiceCard({
   service,
   busyAction,
@@ -1138,6 +1177,8 @@ function ServiceCard({
           <strong>{service.processes.length ? service.processes.map((item) => item.pid).join(" / ") : "无"}</strong>
         </div>
       </div>
+      {/* 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。 */}
+  // 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。
 
       <div className="service-process-list">
         {service.processes.length ? (
@@ -1179,6 +1220,7 @@ function ServiceCard({
   );
 }
 
+// 中文说明：函数「SettingsView」负责完成该界面的状态处理、交互逻辑或数据转换。
 function SettingsView({ status, currentRun, onImport, onBackendStateChange, systemStatusSnapshot, onSystemStatusSnapshotChange, viralAnalysis, onViralAnalysisChange }: { status: ApiStatus | null; currentRun: WorkflowRun | null; onImport: (run: WorkflowRun) => void; onBackendStateChange: () => void; systemStatusSnapshot: SystemStatus | null; onSystemStatusSnapshotChange: (status: SystemStatus) => void; viralAnalysis: ViralAnalysisConfig; onViralAnalysisChange: (config: ViralAnalysisConfig) => void }) {
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(systemStatusSnapshot);
   const [controlBusy, setControlBusy] = useState<ControlAction | null>(null);
@@ -1198,6 +1240,7 @@ function SettingsView({ status, currentRun, onImport, onBackendStateChange, syst
   const [envMessage, setEnvMessage] = useState<string | null>(null);
   const [activeEnvCategory, setActiveEnvCategory] = useState<"ai" | "other" | "optional" | null>(null);
 
+  // 中文说明：函数「applyTimeoutSettings」负责完成该界面的状态处理、交互逻辑或数据转换。
   function applyTimeoutSettings(next: TimeoutSettings) {
     setTimeoutSettings(next);
     setTimeoutDraft({
@@ -1211,12 +1254,14 @@ function SettingsView({ status, currentRun, onImport, onBackendStateChange, syst
     });
   }
 
+  // 中文说明：函数「updateTimeoutDraft」负责完成该界面的状态处理、交互逻辑或数据转换。
   function updateTimeoutDraft(field: keyof TimeoutSettings, value: string) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return;
     setTimeoutDraft((current) => ({ ...current, [field]: Math.max(1, Math.floor(parsed)) }));
   }
 
+  // 中文说明：函数「toggleUnlimited」负责完成该界面的状态处理、交互逻辑或数据转换。
   function toggleUnlimited(field: "news" | "model", enabled: boolean) {
     setUnlimitedTimeouts((current) => ({ ...current, [field]: enabled }));
     if (!enabled) {
@@ -1378,6 +1423,8 @@ function SettingsView({ status, currentRun, onImport, onBackendStateChange, syst
       setControlBusy(null);
     }
   }
+  // 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。
+  // 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。
 
   return (
     <div className={`single-view settings-page-shell${activeEnvCategory ? " subpage" : ""}`}>
@@ -1565,6 +1612,7 @@ function SettingsView({ status, currentRun, onImport, onBackendStateChange, syst
   );
 }
 
+// 中文说明：函数「OverviewView」负责完成该界面的状态处理、交互逻辑或数据转换。
 function OverviewView({
   run,
   running,
@@ -1612,6 +1660,7 @@ function OverviewView({
   );
 }
 
+// 中文说明：函数「App」负责完成该界面的状态处理、交互逻辑或数据转换。
 export default function App() {
   const [activeView, setActiveView] = useState<ViewId>(readSavedView);
   const [status, setStatus] = useState<ApiStatus | null>(null);
@@ -1634,6 +1683,7 @@ export default function App() {
   // for the Settings view to mount and issuing its first expensive query.
   useEffect(() => {
     let disposed = false;
+    // 中文说明：函数「refresh」负责完成该界面的状态处理、交互逻辑或数据转换。
     const refresh = () => {
       fetchSystemStatus().then((next) => {
         if (!disposed) setSystemStatusSnapshot(next);
@@ -1750,6 +1800,7 @@ export default function App() {
     return current;
   }
 
+  // 中文说明：函数「showRunError」负责完成该界面的状态处理、交互逻辑或数据转换。
   function showRunError(result: WorkflowRun, fallback: string) {
     if (result.status === "failed") {
       setError(formatWorkflowError(result, fallback));
@@ -1803,6 +1854,8 @@ export default function App() {
       setRunning(false);
     }
   }
+  // 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。
+  // 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。
 
   async function handleResume() {
     if (!run) return;
@@ -1847,6 +1900,7 @@ export default function App() {
     }
   }
 
+  // 中文说明：函数「handleSelectTopic」负责完成该界面的状态处理、交互逻辑或数据转换。
   function handleSelectTopic(title: string | null) {
     setSelectedTopicTitle(title);
     setRun((current) => current ? { ...current, selected_topic_title: title } : current);

@@ -33,6 +33,7 @@ warnings.filterwarnings("ignore")
 # Data source availability detection
 _AVAILABLE_SOURCES = {}
 
+# 中文说明：函数「_check_source」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _check_source(name):
     """Lazy-check if a data source library is importable."""
     if name not in _AVAILABLE_SOURCES:
@@ -43,6 +44,7 @@ def _check_source(name):
             _AVAILABLE_SOURCES[name] = False
     return _AVAILABLE_SOURCES[name]
 
+# 中文说明：函数「_log」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _log(msg):
     """Log to stderr so it doesn't pollute JSON stdout."""
     print(f"[INFO] {msg}", file=sys.stderr)
@@ -52,6 +54,7 @@ def _log(msg):
 # SECTION 1: Stock Code Parser
 # ============================================================
 
+# 中文说明：函数「classify_stock」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def classify_stock(code: str) -> tuple:
     """
     Returns (market, normalized_code, display_code)
@@ -85,6 +88,7 @@ def classify_stock(code: str) -> tuple:
     return ("unknown", code, code)
 
 
+# 中文说明：函数「to_yfinance_code」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def to_yfinance_code(code: str, market: str) -> str:
     """Convert to Yahoo Finance ticker format."""
     if market == "cn_hk":
@@ -104,6 +108,7 @@ def to_yfinance_code(code: str, market: str) -> str:
 # SECTION 2: Data Fetchers (with graceful degradation)
 # ============================================================
 
+# 中文说明：函数「_df_to_ohlcv」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _df_to_ohlcv(df, days):
     """Convert a normalized DataFrame to OHLCV list."""
     import pandas as pd
@@ -128,6 +133,7 @@ def _df_to_ohlcv(df, days):
 
 # --- Tushare Pro (Priority 0, needs TUSHARE_TOKEN) ---
 
+# 中文说明：函数「_fetch_tushare_a」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _fetch_tushare_a(code: str, days: int):
     """Fetch A-share via Tushare Pro. Returns (ohlcv, source) or raises."""
     token = os.environ.get("TUSHARE_TOKEN")
@@ -154,6 +160,7 @@ def _fetch_tushare_a(code: str, days: int):
 
 # --- efinance (Priority 1, free) ---
 
+# 中文说明：函数「_fetch_efinance_a」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _fetch_efinance_a(code: str, days: int):
     """Fetch A-share via efinance (EastMoney). Returns (ohlcv, source) or raises."""
     import efinance as ef
@@ -170,6 +177,7 @@ def _fetch_efinance_a(code: str, days: int):
     return _df_to_ohlcv(df, days), "efinance"
 
 
+# 中文说明：函数「_fetch_efinance_hk」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _fetch_efinance_hk(code: str, days: int):
     """Fetch HK stock via efinance."""
     import efinance as ef
@@ -188,6 +196,7 @@ def _fetch_efinance_hk(code: str, days: int):
 
 # --- akshare (Priority 2, free) ---
 
+# 中文说明：函数「_fetch_akshare_a」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _fetch_akshare_a(code: str, days: int):
     """Fetch A-share via akshare."""
     import akshare as ak
@@ -211,6 +220,7 @@ def _fetch_akshare_a(code: str, days: int):
     return _df_to_ohlcv(df, days), "akshare"
 
 
+# 中文说明：函数「_fetch_akshare_hk」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _fetch_akshare_hk(code: str, days: int):
     """Fetch HK stock via akshare."""
     import akshare as ak
@@ -236,6 +246,7 @@ def _fetch_akshare_hk(code: str, days: int):
 
 # --- yfinance (Priority 3, free, fallback for all markets) ---
 
+# 中文说明：函数「_fetch_yfinance」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _fetch_yfinance(code: str, market: str, days: int):
     """Fetch any stock via yfinance (universal fallback)."""
     import yfinance as yf
@@ -266,6 +277,7 @@ def _fetch_yfinance(code: str, market: str, days: int):
 
 # --- Realtime quote fetchers ---
 
+# 中文说明：函数「_fetch_realtime_a」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _fetch_realtime_a(code: str) -> dict:
     """Fetch A-share realtime quote with fallback."""
     # Try akshare spot (most reliable for realtime)
@@ -289,6 +301,7 @@ def _fetch_realtime_a(code: str) -> dict:
                     "pb_ratio": _safe_float(r.get("市净率")),
                     "total_mv": _safe_float(r.get("总市值")),
                     "circ_mv": _safe_float(r.get("流通市值")),
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
                     "high": _safe_float(r.get("最高")),
                     "low": _safe_float(r.get("最低")),
                     "open": _safe_float(r.get("今开")),
@@ -314,6 +327,7 @@ def _fetch_realtime_a(code: str) -> dict:
     return {}
 
 
+# 中文说明：函数「_fetch_realtime_hk」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _fetch_realtime_hk(code: str) -> dict:
     """Fetch HK realtime quote."""
     if _check_source("akshare"):
@@ -337,6 +351,7 @@ def _fetch_realtime_hk(code: str) -> dict:
     return {}
 
 
+# 中文说明：函数「_fetch_realtime_us」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _fetch_realtime_us(code: str) -> dict:
     """Fetch US realtime quote via yfinance."""
     try:
@@ -367,6 +382,7 @@ def _fetch_realtime_us(code: str) -> dict:
 
 # --- Priority router ---
 
+# 中文说明：函数「fetch_cn_a」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_cn_a(code: str, days: int) -> dict:
     """Fetch A-share with priority: Tushare > efinance > akshare > yfinance."""
     ohlcv = None
@@ -409,6 +425,7 @@ def fetch_cn_a(code: str, days: int) -> dict:
     return {"ohlcv": ohlcv, "realtime": realtime, "name": name, "source": source}
 
 
+# 中文说明：函数「fetch_hk」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_hk(code: str, days: int) -> dict:
     """Fetch HK stock with priority: efinance > akshare > yfinance."""
     ohlcv = None
@@ -441,6 +458,7 @@ def fetch_hk(code: str, days: int) -> dict:
     return {"ohlcv": ohlcv, "realtime": realtime, "name": name, "source": source}
 
 
+# 中文说明：函数「fetch_us」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_us(code: str, days: int) -> dict:
     """Fetch US stock via yfinance (primary source for US)."""
     ohlcv, source = _fetch_yfinance(code, "us", days)
@@ -456,6 +474,7 @@ def fetch_us(code: str, days: int) -> dict:
 # SECTION 2.5: News Search (optional, with graceful degradation)
 # ============================================================
 
+# 中文说明：函数「search_news」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def search_news(stock_name: str, code: str, max_results: int = 5) -> list:
     """
     Search news with priority: Tavily > SerpAPI > empty (let Claude WebSearch).
@@ -484,6 +503,7 @@ def search_news(stock_name: str, code: str, max_results: int = 5) -> list:
             _log(f"[{code}] Tavily failed: {e}")
 
     # Priority 1: SerpAPI
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
     serpapi_key = os.environ.get("SERPAPI_KEY")
     if serpapi_key:
         try:
@@ -518,6 +538,7 @@ def search_news(stock_name: str, code: str, max_results: int = 5) -> list:
 # SECTION 3: Technical Indicator Calculations
 # ============================================================
 
+# 中文说明：函数「_safe_float」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _safe_float(val) -> float:
     """Safely convert to float."""
     if val is None:
@@ -532,6 +553,7 @@ def _safe_float(val) -> float:
         return None
 
 
+# 中文说明：函数「calc_ema」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def calc_ema(data: list, period: int) -> list:
     """Calculate Exponential Moving Average."""
     if not data or len(data) < period:
@@ -547,6 +569,7 @@ def calc_ema(data: list, period: int) -> list:
     return result
 
 
+# 中文说明：函数「calc_ma」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def calc_ma(closes: list, periods: list) -> dict:
     """Calculate Simple Moving Averages."""
     result = {}
@@ -588,6 +611,7 @@ def calc_ma(closes: list, periods: list) -> dict:
     return result
 
 
+# 中文说明：函数「calc_macd」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def calc_macd(closes: list, fast: int = 12, slow: int = 26, signal: int = 9) -> dict:
     """Calculate MACD: DIF, DEA, Histogram, and cross signals."""
     if len(closes) < slow + signal:
@@ -617,6 +641,7 @@ def calc_macd(closes: list, fast: int = 12, slow: int = 26, signal: int = 9) -> 
     prev_dea = dea_list[-2] if len(dea_list) >= 2 else None
 
     hist = round((curr_dif - curr_dea) * 2, 4) if curr_dif is not None and curr_dea is not None else None
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
 
     # Cross signal detection
     macd_signal = "neutral"
@@ -648,6 +673,7 @@ def calc_macd(closes: list, fast: int = 12, slow: int = 26, signal: int = 9) -> 
     }
 
 
+# 中文说明：函数「calc_rsi」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def calc_rsi(closes: list, periods: list) -> dict:
     """Calculate RSI using Wilder's method."""
     result = {}
@@ -675,6 +701,7 @@ def calc_rsi(closes: list, periods: list) -> dict:
         else:
             rs = avg_gain / avg_loss
             rsi = 100 - (100 / (1 + rs))
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
 
         result[key] = round(rsi, 2)
 
@@ -697,6 +724,7 @@ def calc_rsi(closes: list, periods: list) -> dict:
     return result
 
 
+# 中文说明：函数「calc_volume_analysis」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def calc_volume_analysis(volumes: list, closes: list) -> dict:
     """Analyze volume patterns."""
     if len(volumes) < 6 or len(closes) < 2:
@@ -728,6 +756,7 @@ def calc_volume_analysis(volumes: list, closes: list) -> dict:
     return {"vol_ratio": vol_ratio, "trend": trend}
 
 
+# 中文说明：函数「calc_bias」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def calc_bias(closes: list, ma_data: dict) -> dict:
     """Calculate bias ratio (乖离率)."""
     if not closes:
@@ -742,6 +771,7 @@ def calc_bias(closes: list, ma_data: dict) -> dict:
     return result
 
 
+# 中文说明：函数「calc_support」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def calc_support(closes: list, ma_data: dict) -> dict:
     """Check if price is supported by MA lines."""
     if not closes:
@@ -766,6 +796,7 @@ def calc_support(closes: list, ma_data: dict) -> dict:
 # SECTION 4: Composite Trend Scoring (100 points)
 # ============================================================
 
+# 中文说明：函数「calc_trend_score」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def calc_trend_score(ma_data: dict, macd_data: dict, rsi_data: dict,
                      vol_data: dict, bias_data: dict, support_data: dict) -> dict:
     """
@@ -823,6 +854,7 @@ def calc_trend_score(ma_data: dict, macd_data: dict, rsi_data: dict,
         "insufficient_data": 7,
     }
     breakdown["macd"] = macd_scores.get(macd_signal, 7)
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
 
     # 5. RSI score (10 pts)
     rsi_zone = rsi_data.get("zone", "neutral")
@@ -876,6 +908,7 @@ def calc_trend_score(ma_data: dict, macd_data: dict, rsi_data: dict,
 # SECTION 5: Main Orchestrator
 # ============================================================
 
+# 中文说明：函数「analyze_stock」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def analyze_stock(code: str, days: int = 120, fetch_news: bool = False) -> dict:
     """Full analysis pipeline for a single stock."""
     market, normalized, display = classify_stock(code)
@@ -909,6 +942,7 @@ def analyze_stock(code: str, days: int = 120, fetch_news: bool = False) -> dict:
     bias = calc_bias(closes, ma)
     support = calc_support(closes, ma)
     score = calc_trend_score(ma, macd, rsi, vol, bias, support)
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
 
     # News search (optional)
     news = []
@@ -940,6 +974,7 @@ def analyze_stock(code: str, days: int = 120, fetch_news: bool = False) -> dict:
     return result
 
 
+# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     parser = argparse.ArgumentParser(description="Stock Data Fetcher")
     parser.add_argument("--stocks", required=True, help="Comma-separated stock codes")

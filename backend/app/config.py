@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     stock_fetch_retries: int = Field(default=2, ge=0, le=5, alias="STOCK_FETCH_RETRIES")
     stock_cache_ttl_seconds: int = Field(default=60, ge=0, le=3600, alias="STOCK_CACHE_TTL_SECONDS")
 
+    # 中文说明：函数「empty_model_means_auto」负责完成该步骤的输入处理、核心逻辑和结果返回。
     @field_validator("ai_model", mode="before")
     @classmethod
     def empty_model_means_auto(cls, value: str | None) -> str | None:
@@ -81,11 +82,13 @@ class Settings(BaseSettings):
         populate_by_name=True,
     )
 
+    # 中文说明：函数「ai_enabled」负责完成该步骤的输入处理、核心逻辑和结果返回。
     @property
     def ai_enabled(self) -> bool:
         return bool(self.ai_api_key)
 
 
+# 中文说明：函数「get_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
@@ -102,6 +105,7 @@ def get_settings() -> Settings:
     return settings
 
 
+# 中文说明：函数「get_timeout_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def get_timeout_settings() -> TimeoutSettings:
     settings = get_settings()
     return TimeoutSettings(
@@ -111,6 +115,7 @@ def get_timeout_settings() -> TimeoutSettings:
     )
 
 
+# 中文说明：函数「get_output_directory_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def get_output_directory_settings() -> OutputDirectorySettings:
     with _RUNTIME_SETTINGS_LOCK:
         try:
@@ -120,6 +125,7 @@ def get_output_directory_settings() -> OutputDirectorySettings:
             return OutputDirectorySettings()
 
 
+# 中文说明：函数「update_output_directory_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def update_output_directory_settings(value: OutputDirectorySettings) -> OutputDirectorySettings:
     # Preserve timeout settings in the shared runtime-settings file.
     with _RUNTIME_SETTINGS_LOCK:
@@ -133,6 +139,7 @@ def update_output_directory_settings(value: OutputDirectorySettings) -> OutputDi
     return value
 
 
+# 中文说明：函数「update_timeout_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def update_timeout_settings(value: TimeoutSettings) -> TimeoutSettings:
     settings = get_settings()
     settings.news_fetch_timeout_seconds = value.news_fetch_timeout_seconds
@@ -165,6 +172,7 @@ _ENV_FIELDS = {
 _SECRET_FIELDS = {"ai_api_key", "mpt_pexels_api_key", "socialdatax_api_key", "tushare_token", "tavily_api_key", "serpapi_key"}
 
 
+# 中文说明：函数「_secret_setting」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _secret_setting(value: str | None) -> SecretSetting:
     if not value:
         return SecretSetting()
@@ -177,6 +185,7 @@ def _secret_setting(value: str | None) -> SecretSetting:
     return SecretSetting(configured=True, preview=preview)
 
 
+# 中文说明：函数「get_env_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def get_env_settings() -> EnvSettings:
     settings = get_settings()
     return EnvSettings(
@@ -194,6 +203,7 @@ def get_env_settings() -> EnvSettings:
     )
 
 
+# 中文说明：函数「update_env_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def update_env_settings(value: EnvSettingsUpdate) -> EnvSettings:
     """Persist editable values to .env and reload settings for this process."""
     ROOT_DIR.joinpath(".env").touch(exist_ok=True)

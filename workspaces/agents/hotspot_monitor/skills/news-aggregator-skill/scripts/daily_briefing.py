@@ -137,6 +137,7 @@ PROFILES = {
 }
 
 
+# 中文说明：函数「fetch_section」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_section(section_name, config):
     print(f"[{section_name}] Starting fetch...", file=sys.stderr)
     results = []
@@ -164,6 +165,7 @@ def fetch_section(section_name, config):
         
     return results
 
+# 中文说明：函数「save_individual_sources」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def save_individual_sources(data, base_dir):
     """
     Splits the aggregated data by 'source' and saves individual JSON files.
@@ -194,6 +196,7 @@ def save_individual_sources(data, base_dir):
 
     return list(source_map.keys())
 
+# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--profile', default='general', choices=PROFILES.keys(), help='Briefing Profile')

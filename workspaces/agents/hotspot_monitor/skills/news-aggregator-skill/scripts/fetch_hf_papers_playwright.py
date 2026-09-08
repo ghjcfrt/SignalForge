@@ -6,6 +6,7 @@ from playwright.sync_api import sync_playwright
 
 import argparse
 
+# 中文说明：函数「fetch_papers」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_papers(limit=10):
     results = []
     with sync_playwright() as p:
@@ -59,6 +60,7 @@ def fetch_papers(limit=10):
                         page.goto(item['url'], timeout=60000, wait_until="domcontentloaded")
                     except:
                         sys.stderr.write("   -> Detail Page Timeout (Partial/Continue)\n")
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
 
                     # 1. Abstract
                     abstract_text = ""

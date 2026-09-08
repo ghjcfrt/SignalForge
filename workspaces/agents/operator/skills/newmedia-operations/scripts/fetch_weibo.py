@@ -5,9 +5,11 @@ from datetime import datetime
 from typing import List, Dict
 
 class WeiboFetcher:
+    # 中文说明：函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def __init__(self):
         self.base_url = "https://weibo.com"
     
+    # 中文说明：函数「fetch_comments」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def fetch_comments(self, topic: str, limit: int = 50) -> List[Dict]:
         comments = []
         
@@ -44,6 +46,7 @@ class WeiboFetcher:
                 "timestamp": datetime.now().isoformat(),
                 "likes": 234,
                 "reposts": 45,
+        # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
                 "comments": 12,
                 "sentiment": "neutral",
                 "is_negative": False
@@ -81,6 +84,7 @@ class WeiboFetcher:
         
         return comments
     
+    # 中文说明：函数「save_to_json」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def save_to_json(self, comments: List[Dict], output_path: str):
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump({
@@ -92,6 +96,7 @@ class WeiboFetcher:
         
         print(f"✅ 已保存 {len(comments)} 条微博评论到 {output_path}")
 
+# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     parser = argparse.ArgumentParser(description='抓取微博评论数据')
     parser.add_argument('--topic', type=str, required=True, help='话题')

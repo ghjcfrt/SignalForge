@@ -12,12 +12,15 @@ from backend.app.schemas import AgentOutput, TopicSeed
 
 
 class ApiSmokeTests(unittest.IsolatedAsyncioTestCase):
+    # 中文说明：异步函数「asyncSetUp」负责完成该步骤的输入处理、核心逻辑和结果返回。
     async def asyncSetUp(self) -> None:
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test")
 
+    # 中文说明：异步函数「asyncTearDown」负责完成该步骤的输入处理、核心逻辑和结果返回。
     async def asyncTearDown(self) -> None:
         await self.client.aclose()
 
+    # 中文说明：异步函数「test_health_agents_and_every_employee_workbench」负责完成该步骤的输入处理、核心逻辑和结果返回。
     async def test_health_agents_and_every_employee_workbench(self) -> None:
         response = await self.client.get("/api/health")
         self.assertEqual(response.status_code, 200)
@@ -28,6 +31,7 @@ class ApiSmokeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("libraries", stock_health.json())
         original = main.run_agent
 
+        # 中文说明：异步函数「fake_run」负责完成该步骤的输入处理、核心逻辑和结果返回。
         async def fake_run(agent_id, request, settings):
             return AgentOutput(
                 agent_id=agent_id,
@@ -50,6 +54,7 @@ class ApiSmokeTests(unittest.IsolatedAsyncioTestCase):
         finally:
             main.run_agent = original
 
+    # 中文说明：异步函数「test_manual_step_resume_and_cancel_contract」负责完成该步骤的输入处理、核心逻辑和结果返回。
     async def test_manual_step_resume_and_cancel_contract(self) -> None:
         seed = TopicSeed(domain="AI", brief="smoke", audience="test", duration_seconds=60)
         created = await self.client.post(
@@ -60,6 +65,7 @@ class ApiSmokeTests(unittest.IsolatedAsyncioTestCase):
         run_id = created.json()["id"]
         original_execute = main._execute_workflow
 
+        # 中文说明：异步函数「fake_execute」负责完成该步骤的输入处理、核心逻辑和结果返回。
         async def fake_execute(run, *, stop_after_stage=None):
             await asyncio.sleep(30)
 
@@ -77,6 +83,7 @@ class ApiSmokeTests(unittest.IsolatedAsyncioTestCase):
             if task and not task.done():
                 task.cancel()
 
+    # 中文说明：异步函数「test_fixture_source_keeps_two_domain_gate」负责完成该步骤的输入处理、核心逻辑和结果返回。
     async def test_fixture_source_keeps_two_domain_gate(self) -> None:
         original_settings = main.get_settings
         original_workflow_settings = workflows.get_settings
@@ -86,9 +93,11 @@ class ApiSmokeTests(unittest.IsolatedAsyncioTestCase):
         workflows.get_settings = lambda: settings
 
         class FixtureGateway:
+            # 中文说明：函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
             def __init__(self, _settings):
                 pass
 
+            # 中文说明：异步函数「complete」负责完成该步骤的输入处理、核心逻辑和结果返回。
             async def complete(self, system: str, user: str, fallback: str):
                 class Completion:
                     content = json.dumps({"topics": []}, ensure_ascii=False)

@@ -4,6 +4,7 @@ import json
 import time
 from playwright.sync_api import sync_playwright
 
+# 中文说明：函数「fetch_bensbites」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_bensbites():
     results = []
     with sync_playwright() as p:
@@ -57,6 +58,7 @@ def fetch_bensbites():
                         full_url = href if href.startswith("http") else f"https://www.bensbites.com{href}"
                         if full_url in seen_urls: continue
                         seen_urls.add(full_url)
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
                         
                         title_el = link.query_selector("h1, h2, h3, h4, .post-title")
                         link_text = title_el.inner_text().strip() if title_el else link.inner_text().strip()

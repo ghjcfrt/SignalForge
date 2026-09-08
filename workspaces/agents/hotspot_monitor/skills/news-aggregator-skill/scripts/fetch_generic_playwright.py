@@ -4,6 +4,7 @@ import json
 import argparse
 from playwright.sync_api import sync_playwright
 
+# 中文说明：函数「fetch_content」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_content(url):
     results = []
     with sync_playwright() as p:
@@ -32,6 +33,7 @@ def fetch_content(url):
             # Chrome often wraps XML in a style. 
             # Let's try to get innerText of body
             body_text = page.inner_text("body")
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
             
             # Print raw content for the caller (rss_parser) to handle? 
             # Or if we want to return JSON directly?

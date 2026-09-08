@@ -8,21 +8,25 @@ from typing import List, Dict, Tuple
 from collections import Counter
 
 class DataCleaner:
+    # 中文说明：函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def __init__(self):
         self.emoticon_pattern = re.compile(r'[\U00010000-\U0010ffff]')
         self.spam_keywords = ['广告', '推广', '加微信', '兼职', '赚钱', '代购', '优惠', '折扣']
         self.min_content_length = 5
         self.similarity_threshold = 0.8
     
+    # 中文说明：函数「clean_text」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def clean_text(self, text: str) -> str:
         text = self.emoticon_pattern.sub('', text)
         text = re.sub(r'[^\w\s\u4e00-\u9fff,.!?;:，。！？；：]', '', text)
         text = text.strip()
         return text
     
+    # 中文说明：函数「is_spam」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def is_spam(self, text: str) -> bool:
         return any(keyword in text for keyword in self.spam_keywords)
     
+    # 中文说明：函数「is_valid」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def is_valid(self, text: str) -> bool:
         if not text or len(text) < self.min_content_length:
             return False
@@ -32,6 +36,7 @@ class DataCleaner:
             return False
         return True
     
+    # 中文说明：函数「calculate_similarity」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def calculate_similarity(self, text1: str, text2: str) -> float:
         if not text1 or not text2:
             return 0.0
@@ -47,6 +52,7 @@ class DataCleaner:
         
         return len(intersection) / len(union)
     
+    # 中文说明：函数「deduplicate_advanced」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def deduplicate_advanced(self, data: List[Dict]) -> List[Dict]:
         if not data:
             return []
@@ -70,6 +76,7 @@ class DataCleaner:
         
         return unique_data
     
+    # 中文说明：函数「clean_data」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def clean_data(self, data: List[Dict], min_valid_count: int = 2000) -> Tuple[List[Dict], Dict]:
         cleaned = []
         invalid_stats = {
@@ -93,6 +100,7 @@ class DataCleaner:
             if self.is_spam(content):
                 invalid_stats['spam'] += 1
                 continue
+        # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
             
             cleaned_content = self.clean_text(content)
             
@@ -116,6 +124,7 @@ class DataCleaner:
         
         return cleaned, stats
     
+    # 中文说明：函数「merge_files」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def merge_files(self, input_paths: List[str]) -> List[Dict]:
         all_data = []
         platform_counts = Counter()
@@ -141,6 +150,7 @@ class DataCleaner:
         
         return all_data
     
+    # 中文说明：函数「save_to_json」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def save_to_json(self, data: List[Dict], stats: Dict, output_path: str):
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump({
@@ -166,6 +176,7 @@ class DataCleaner:
         
         print(f"\n💾 数据已保存到 {output_path}")
 
+# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     parser = argparse.ArgumentParser(description='数据清洗与预处理')
     parser.add_argument('--input', type=str, required=True, help='输入文件或目录路径')

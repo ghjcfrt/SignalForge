@@ -5,6 +5,7 @@ import sys
 import shutil
 from datetime import datetime
 
+# 中文说明：函数「get_all_sources」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def get_all_sources():
     """Retrieve all source keys from fetch_news.py --list-sources"""
     cmd = [sys.executable, 'scripts/fetch_news.py', '--list-sources']
@@ -26,6 +27,7 @@ def get_all_sources():
                 sources.append(key)
     return sources
 
+# 中文说明：函数「test_source」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def test_source(source, out_dir):
     """Run fetch_news.py for a single source"""
     print(f"Testing {source}...", end=' ', flush=True)
@@ -70,6 +72,7 @@ def test_source(source, out_dir):
         print(f"❌ ERROR: {e}")
         return False, 0, str(e)
 
+# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     # Setup
     test_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'test_results')
@@ -99,6 +102,7 @@ def main():
     with open(summary_path, 'w', encoding='utf-8') as f:
         f.write("# 🧪 News Source Test Report\n")
         f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
         
         passed = [r for r in results if r['success']]
         failed = [r for r in results if not r['success']]

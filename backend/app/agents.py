@@ -4,6 +4,7 @@ from backend.app.config import WORKSPACE_DIR
 from backend.app.schemas import Agent, Skill
 
 
+# 中文说明：函数「_workspace」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _workspace(agent_id: str) -> str:
     path = WORKSPACE_DIR / "agents" / agent_id
     path.mkdir(parents=True, exist_ok=True)
@@ -138,6 +139,7 @@ AGENTS: list[Agent] = [
 AGENT_BY_ID = {agent.id: agent for agent in AGENTS}
 
 
+# 中文说明：函数「ensure_agent_workspaces」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def ensure_agent_workspaces() -> None:
     for agent in AGENTS:
         Path(agent.workspace).mkdir(parents=True, exist_ok=True)

@@ -5,9 +5,11 @@ from datetime import datetime
 from typing import List, Dict
 
 class EcommerceReviewFetcher:
+    # 中文说明：函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def __init__(self):
         self.platforms = ["淘宝", "京东", "拼多多"]
     
+    # 中文说明：函数「fetch_reviews」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def fetch_reviews(self, category: str, review_type: str = "negative", limit: int = 50) -> List[Dict]:
         reviews = []
         
@@ -44,6 +46,7 @@ class EcommerceReviewFetcher:
                 "rating": 1,
                 "timestamp": datetime.now().isoformat(),
                 "helpful": 89,
+        # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
                 "sentiment": "negative",
                 "is_negative": True,
                 "demand_type": "客户服务"
@@ -81,6 +84,7 @@ class EcommerceReviewFetcher:
         
         return reviews
     
+    # 中文说明：函数「save_to_json」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def save_to_json(self, reviews: List[Dict], output_path: str):
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump({
@@ -92,6 +96,7 @@ class EcommerceReviewFetcher:
         
         print(f"✅ 已保存 {len(reviews)} 条电商差评到 {output_path}")
 
+# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     parser = argparse.ArgumentParser(description='抓取电商差评数据')
     parser.add_argument('--category', type=str, required=True, help='商品类别')

@@ -30,6 +30,7 @@ from bs4 import XMLParsedAsHTMLWarning
 import warnings
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
+# 中文说明：函数「filter_by_hours」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def filter_by_hours(items, hours=24):
     """Keep only items published within the last N hours.
     Items whose time cannot be parsed are kept (fail-open)."""
@@ -48,6 +49,7 @@ def filter_by_hours(items, hours=24):
     return result
 
 
+# 中文说明：函数「filter_items」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def filter_items(items, keyword=None):
     if not keyword:
         return items
@@ -56,6 +58,7 @@ def filter_items(items, keyword=None):
     regex = r'(?i)(' + pattern + r')'
     return [item for item in items if re.search(regex, item['title'])]
 
+# 中文说明：函数「fetch_url_content」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_url_content(url):
     """
     Fetches the content of a URL and extracts text from paragraphs.
@@ -80,6 +83,7 @@ def fetch_url_content(url):
     except Exception:
         return ""
 
+# 中文说明：函数「enrich_items_with_content」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def enrich_items_with_content(items, max_workers=10):
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_item = {executor.submit(fetch_url_content, item['url']): item for item in items}
@@ -95,6 +99,7 @@ def enrich_items_with_content(items, max_workers=10):
 
 # --- Source Fetchers ---
 
+# 中文说明：函数「fetch_hackernews」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_hackernews(limit=5, keyword=None):
     if keyword:
         # Use Algolia API for keyword search (Much better recall for specific topics like "AI")
@@ -149,6 +154,7 @@ def fetch_hackernews(limit=5, keyword=None):
     news_items = []
     page = 1
     max_pages = 5
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
     
     while len(news_items) < limit and page <= max_pages:
         url = f"{base_url}/news?p={page}"
@@ -197,6 +203,7 @@ def fetch_hackernews(limit=5, keyword=None):
 
     return news_items[:limit]
 
+# 中文说明：函数「fetch_weibo」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_weibo(limit=5, keyword=None):
     # Use the PC Ajax API which returns JSON directly and is less rate-limited than scraping s.weibo.com
     url = "https://weibo.com/ajax/side/hotSearch"
@@ -235,6 +242,7 @@ def fetch_weibo(limit=5, keyword=None):
     except Exception: 
         return []
 
+# 中文说明：函数「fetch_github」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_github(limit=5, keyword=None):
     if keyword:
          # Use GitHub Search for keywords
@@ -270,6 +278,7 @@ def fetch_github(limit=5, keyword=None):
                      })
                 if items: return items[:limit]
          except: pass
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
 
     # Default Trending
     try:
@@ -303,6 +312,7 @@ def fetch_github(limit=5, keyword=None):
         except: continue
     return filter_items(items, keyword)[:limit]
 
+# 中文说明：函数「fetch_36kr」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_36kr(limit=5, keyword=None):
     try:
         response = requests.get("https://36kr.com/newsflashes", headers=HEADERS, timeout=10)
@@ -324,6 +334,7 @@ def fetch_36kr(limit=5, keyword=None):
         return filter_items(items, keyword)[:limit]
     except: return []
 
+# 中文说明：函数「fetch_v2ex」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_v2ex(limit=5, keyword=None):
     try:
         # Hot topics json
@@ -345,6 +356,7 @@ def fetch_v2ex(limit=5, keyword=None):
         return filter_items(items, keyword)[:limit]
     except: return []
 
+# 中文说明：函数「fetch_tencent」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_tencent(limit=5, keyword=None):
     try:
         url = "https://i.news.qq.com/web_backend/v2/getTagInfo?tagId=aEWqxLtdgmQ%3D"
@@ -360,6 +372,7 @@ def fetch_tencent(limit=5, keyword=None):
         return filter_items(items, keyword)[:limit]
     except: return []
 
+# 中文说明：函数「fetch_wallstreetcn」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_wallstreetcn(limit=5, keyword=None):
     try:
         url = "https://api-one.wallstcn.com/apiv1/content/information-flow?channel=global-channel&accept=article&limit=30"
@@ -379,6 +392,7 @@ def fetch_wallstreetcn(limit=5, keyword=None):
         return filter_items(items, keyword)[:limit]
     except: return []
 
+# 中文说明：函数「fetch_producthunt」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_producthunt(limit=5, keyword=None):
     try:
         # Using RSS for speed and reliability without API key
@@ -410,6 +424,7 @@ from rss_parser import fetch_rss_feed
 
 # fetch_tldr_ai removed: all known feed URLs (feed.tldr.tech/ai, tldr.tech/ai/rss) return 404.
 
+# 中文说明：函数「fetch_huggingface_papers」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_huggingface_papers(limit=5, keyword=None):
     items = []
     # User requested a "Good Solution" without fallback.
@@ -450,6 +465,7 @@ def fetch_huggingface_papers(limit=5, keyword=None):
     return filter_items(items[:limit], keyword)
 
 
+# 中文说明：函数「fetch_latentspace_ainews」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_latentspace_ainews(limit=5, keyword=None):
     """Fetch AINews daily roundups from Latent Space Substack RSS.
     Filters for posts with [AINews] title prefix, separating them from podcast episodes."""
@@ -489,6 +505,7 @@ def fetch_latentspace_ainews(limit=5, keyword=None):
                 pub_date = dt.strftime('%Y-%m-%d')
             except Exception:
                 pass
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
             
             # Content snippet from description
             desc_tag = entry.find('description')
@@ -514,6 +531,7 @@ def fetch_latentspace_ainews(limit=5, keyword=None):
 
 # --- Extended Sources (v2): Lobsters / Dev.to / arXiv / Papers with Code / 少数派 / 即刻 / User OPML ---
 
+# 中文说明：函数「fetch_lobsters」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_lobsters(limit=5, keyword=None):
     """Lobsters hottest stories via official JSON API."""
     items = []
@@ -535,6 +553,7 @@ def fetch_lobsters(limit=5, keyword=None):
     return filter_items(items[:limit], keyword)
 
 
+# 中文说明：函数「fetch_devto」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_devto(limit=5, keyword=None):
     """Dev.to top articles of the past 24h via official JSON API."""
     items = []
@@ -558,6 +577,7 @@ def fetch_devto(limit=5, keyword=None):
     return filter_items(items[:limit], keyword)
 
 
+# 中文说明：函数「fetch_sspai」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_sspai(limit=5, keyword=None):
     """少数派 latest articles via RSS."""
     return filter_items(fetch_rss_feed("https://sspai.com/feed", "少数派", limit * 2)[:limit], keyword)
@@ -568,6 +588,7 @@ def fetch_sspai(limit=5, keyword=None):
 # Removed from v2 sources. Use --source huggingface for trending papers.
 
 
+# 中文说明：函数「fetch_arxiv」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_arxiv(limit=5, keyword=None, categories=None):
     """arXiv latest submissions in given CS categories via official Atom API.
     arXiv 接口偶尔较慢，最多重试 3 次（timeout=45s，退避 2s/4s）。"""
@@ -595,11 +616,13 @@ def fetch_arxiv(limit=5, keyword=None, categories=None):
     return filter_items(items[:limit], keyword)
 
 
+# 中文说明：函数「fetch_infoq_cn」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_infoq_cn(limit=5, keyword=None):
     """InfoQ 中文站最新文章 via RSS。"""
     return filter_items(fetch_rss_feed("https://www.infoq.cn/feed.xml", "InfoQ 中文", limit * 2)[:limit], keyword)
 
 
+# 中文说明：函数「fetch_aihot」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_aihot(limit=15, keyword=None):
     """AIHOT (aihot.virxact.com) AI 精选聚合，跨源中文编辑稿，日更 ~50 条。
     默认拉最近 24h 内容（日更源，50 条/天，取最多 limit 条）。"""
@@ -608,6 +631,7 @@ def fetch_aihot(limit=15, keyword=None):
     return filter_items(items[:limit], keyword)
 
 
+# 中文说明：函数「fetch_tldr_ai」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_tldr_ai(limit=3, keyword=None):
     """TLDR AI 英文每日 AI 摘要，5-10 主题/期。
     默认拉最近 48h（日刊时间戳为午夜 UTC，48h 确保任意时段都能拿到最新 1-2 期）。"""
@@ -616,6 +640,7 @@ def fetch_tldr_ai(limit=3, keyword=None):
     return filter_items(items[:limit], keyword)
 
 
+# 中文说明：函数「fetch_import_ai」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_import_ai(limit=2, keyword=None):
     """Import AI by Jack Clark（前 OpenAI/Anthropic 联创）周更深度评论。
     默认拉最近 7 天（周刊，1 条 = 1 期 = 1 周），通常返回最新 1 期。"""
@@ -641,6 +666,7 @@ REUTERS_GOOGLE_NEWS_RSS = (
 INTERNATIONAL_NEWS_MAX_AGE_HOURS = 24
 
 
+# 中文说明：函数「fetch_recent_rss_feed」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_recent_rss_feed(url, source_name, limit=10, keyword=None, hours=INTERNATIONAL_NEWS_MAX_AGE_HOURS):
     """Fetch an RSS feed and keep only items from the recent time window."""
     raw = fetch_rss_feed(url, source_name, max(limit * 4, 30))
@@ -648,12 +674,15 @@ def fetch_recent_rss_feed(url, source_name, limit=10, keyword=None, hours=INTERN
     return filter_items(items, keyword)[:limit]
 
 
+# 中文说明：函数「create_recent_rss_fetcher」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def create_recent_rss_fetcher(url, name, hours=INTERNATIONAL_NEWS_MAX_AGE_HOURS):
+    # 中文说明：函数「fetcher」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def fetcher(limit=5, keyword=None):
         return fetch_recent_rss_feed(url, name, limit, keyword, hours)
     return fetcher
 
 
+# 中文说明：函数「fetch_reuters」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_reuters(limit=10, keyword=None):
     """Reuters public fallback via Google News RSS.
     Reuters.com no longer exposes a reliable unauthenticated public RSS feed."""
@@ -671,6 +700,7 @@ def fetch_reuters(limit=10, keyword=None):
     return filter_items(items, keyword)[:limit]
 
 
+# 中文说明：函数「fetch_international」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_international(limit=15, keyword=None):
     """Aggregate official international RSS feeds plus Reuters fallback."""
     per_source = max(2, min(5, limit // 3))
@@ -701,6 +731,7 @@ def fetch_international(limit=15, keyword=None):
     return merged
 
 
+# 中文说明：函数「fetch_user_feeds」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_user_feeds(limit=5, keyword=None):
     """Fetch user-defined RSS feeds from an OPML file.
     Looks at ~/.config/news-aggregator/user_sources.opml first,
@@ -739,6 +770,7 @@ AI_NEWSLETTER_SOURCES = [
 
 # ... (rest of sources)
 
+# 中文说明：函数「fetch_rss_with_playwright」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_rss_with_playwright(url, source_name, limit=5):
     """Fallback fetcher using Playwright to bypass Cloudflare"""
     try:
@@ -763,6 +795,7 @@ def fetch_rss_with_playwright(url, source_name, limit=5):
                         "title": "Ben's Bites (Visit Site)",
                         "url": "https://bensbites.beehiiv.com/",
                         "time": "Today",
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
                         "summary": "Auto-fetch failed. Please verify on site.",
                     }]
              else:
@@ -804,6 +837,7 @@ ESSAY_SOURCES = [
     ("Dan Koe", "https://thedankoe.com/feed/"),
 ]
 
+# 中文说明：函数「fetch_ai_newsletters」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_ai_newsletters(limit=5, keyword=None):
     """Aggregate Fetcher for AI Newsletters"""
     all_items = []
@@ -813,6 +847,7 @@ def fetch_ai_newsletters(limit=5, keyword=None):
             all_items.extend(future.result())
     return filter_items(all_items, keyword)[:limit]
 
+# 中文说明：函数「fetch_podcasts」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_podcasts(limit=5, keyword=None):
     all_items = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -821,6 +856,7 @@ def fetch_podcasts(limit=5, keyword=None):
             all_items.extend(future.result())
     return filter_items(all_items, keyword)[:limit]
 
+# 中文说明：函数「fetch_essays」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_essays(limit=5, keyword=None):
     all_items = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -829,12 +865,15 @@ def fetch_essays(limit=5, keyword=None):
             all_items.extend(future.result())
     return filter_items(all_items, keyword)[:limit]
 
+# 中文说明：函数「create_single_rss_fetcher」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def create_single_rss_fetcher(url, name):
+    # 中文说明：函数「fetcher」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def fetcher(limit=5, keyword=None):
         return filter_items(fetch_rss_feed(url, name, limit), keyword)[:limit]
     return fetcher
 
 
+# 中文说明：函数「save_report」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def save_report(data, source_name, out_dir):
     """
     Saves JSON and generates a simple Markdown report.
@@ -853,6 +892,7 @@ def save_report(data, source_name, out_dir):
         
     return json_path
 
+# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     parser = argparse.ArgumentParser()
     sources_map = {
@@ -932,9 +972,11 @@ def main():
         requested_sources = [s.strip() for s in args.source.split(',')]
         for s in requested_sources:
             if s in sources_map: to_run.append(sources_map[s])
+    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
             
     results = []
     
+    # 中文说明：函数「run_fetchers」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def run_fetchers(fetchers, limit, kw):
         res = []
         for func in fetchers:
