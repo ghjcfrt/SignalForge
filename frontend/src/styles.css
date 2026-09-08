@@ -253,6 +253,45 @@ button {
   gap: 10px;
 }
 
+.project-message-banner {
+  min-height: 42px;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(15, 159, 134, 0.2);
+  border-radius: 8px;
+  color: #0b6f60;
+  background: #f0faf7;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.project-message-banner span {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.project-message-banner button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  flex: 0 0 auto;
+  color: #0b6f60;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.project-message-banner button:hover {
+  background: rgba(15, 159, 134, 0.1);
+}
+
 .api-pill,
 .primary-button,
 .ghost-button {
@@ -1805,11 +1844,11 @@ button {
 .env-settings-panel[data-category="other"] .timeout-field:nth-child(4),
 .env-settings-panel[data-category="other"] .timeout-field:nth-child(5),
 .env-settings-panel[data-category="other"] .env-advanced { display: none; }
-.env-settings-panel[data-category="optional"] .timeout-field:nth-child(-n+4),
-.env-settings-panel[data-category="optional"] .timeout-field:nth-child(6),
-.env-settings-panel[data-category="optional"] .timeout-field:nth-child(7),
-.env-settings-panel[data-category="optional"] .timeout-field:nth-child(8),
-.env-settings-panel[data-category="optional"] .directory-field { display: none; }
+.env-settings-panel[data-category="optional"] > .timeout-grid > .timeout-field:nth-child(-n+4),
+.env-settings-panel[data-category="optional"] > .timeout-grid > .timeout-field:nth-child(6),
+.env-settings-panel[data-category="optional"] > .timeout-grid > .timeout-field:nth-child(7),
+.env-settings-panel[data-category="optional"] > .timeout-grid > .timeout-field:nth-child(8),
+.env-settings-panel[data-category="optional"] > .timeout-grid > .directory-field { display: none; }
 .env-settings-panel[data-category="optional"] .env-advanced { display: block; }
 
 .other-config-block {
@@ -2789,6 +2828,12 @@ button {
 
 .employee-log-panel {
   padding-bottom: 16px;
+}
+
+.employee-log-panel .clear-log-button {
+  flex: 0 0 88px;
+  width: 88px;
+  min-width: 88px;
 }
 
 .employee-log-list .run-log-entry {

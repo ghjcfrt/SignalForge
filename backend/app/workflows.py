@@ -2,15 +2,8 @@ from __future__ import annotations
 
 import json
 import httpx
-from xml.etree import ElementTree
-from urllib.parse import urlparse
 import asyncio
-import os
-import subprocess
-import sys
 import re
-import importlib.util
-import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -20,6 +13,16 @@ from uuid import uuid4
 from backend.app.agents import AGENT_BY_ID
 from backend.app.config import ROOT_DIR, WORKSPACE_DIR, Settings, get_output_directory_settings, get_settings
 from backend.app.llm import LlmGateway
+from backend.app.stock_analysis import analyze_stocks as _analyze_stocks_module, stock_sources_health as _stock_sources_health_module
+from backend.app.socialdatax import (
+    enrich_socialdatax_notes as _enrich_socialdatax_notes_module,
+    normalize_socialdatax_notes as _normalize_socialdatax_notes_module,
+    run_socialdatax_note_search as _run_socialdatax_note_search_module,
+    run_socialdatax_transcript as _run_socialdatax_transcript_module,
+    socialdatax_context as _socialdatax_context_module,
+    socialdatax_error as _socialdatax_error_module,
+    socialdatax_payload_failed as _socialdatax_payload_failed_module,
+)
 from backend.app.schemas import (
     AgentOutput,
     GenerateScriptRequest,
@@ -34,6 +37,35 @@ from backend.app.schemas import (
     RunAgentRequest,
 )
 from backend.app.video_tools import MoneyPrinterTurboRequest, run_moneyprinterturbo
+from backend.app.news_sources import (
+    run_news_aggregator as _run_news_aggregator_module,
+    configured_rss_feeds as _configured_rss_feeds_module,
+    load_news_fixture as _load_news_fixture_module,
+    run_news_skill as _run_news_skill_module,
+    run_builtin_news_aggregator as _run_builtin_news_aggregator_module,
+)
+from backend.app.topic_validation import (
+    extract_json_payload as _extract_json_payload_module,
+    coerce_heat as _coerce_heat_module,
+    coerce_count as _coerce_count_module,
+    source_domain as _source_domain_module,
+    evidence_domain as _evidence_domain_module,
+    news_relevance as _news_relevance_module,
+    task_overlap_score as _task_overlap_score_module,
+    is_diagnostic_topic as _is_diagnostic_topic_module,
+    clean_topic_title as _clean_topic_title_module,
+    augment_topic_sources as _augment_topic_sources_module,
+    validate_topics as _validate_topics_module,
+    rank_news_items as _rank_news_items_module,
+    diversify_news_items as _diversify_news_items_module,
+)
+from backend.app.persistence import (
+    write_artifact as _write_artifact_module,
+    output as _output_module,
+    checkpoint as _checkpoint_module,
+    workflow_log_path as _workflow_log_path_module,
+    log as _log_module,
+)
 
 
 RUNS: dict[str, WorkflowRun] = {}
@@ -122,67 +154,22 @@ def _parse_public_datetime(value: object) -> datetime | None:
 
 # 中文说明：函数「_extract_json_payload」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _extract_json_payload(content: str) -> object:
-    text = content.strip()
-    if text.startswith("```"):
-        lines = text.splitlines()
-        if lines and lines[0].strip().startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        text = "\n".join(lines).strip()
-
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        decoder = json.JSONDecoder()
-        for index, character in enumerate(text):
-            if character not in "[{":
-                continue
-            try:
-                payload, _ = decoder.raw_decode(text[index:])
-                return payload
-            except json.JSONDecodeError:
-                continue
-    raise ValueError("model response does not contain a JSON object or array")
+    return _extract_json_payload_module(content)
 
 
 # 中文说明：函数「_coerce_heat」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _coerce_heat(value: object) -> int:
-    if isinstance(value, bool):
-        return 0
-    if isinstance(value, (int, float)):
-        return max(0, min(100, int(value)))
-    text = str(value or "").strip().casefold()
-    qualitative = {
-        "极高": 95,
-        "very high": 95,
-        "高": 85,
-        "high": 85,
-        "中": 65,
-        "medium": 65,
-        "低": 40,
-        "low": 40,
-    }
-    if text in qualitative:
-        return qualitative[text]
-    try:
-        return max(0, min(100, int(float(text))))
-    except (TypeError, ValueError):
-        return 50
+    return _coerce_heat_module(value)
 
 
 # 中文说明：函数「_coerce_count」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _coerce_count(value: object) -> int:
-    try:
-        return max(0, int(value or 0))
-    except (TypeError, ValueError, OverflowError):
-        return 0
+    return _coerce_count_module(value)
 
 
 # 中文说明：函数「_source_domain」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _source_domain(url: str) -> str:
-    host = (urlparse(url).hostname or "").lower()
-    return host[4:] if host.startswith("www.") else host
+    return _source_domain_module(url)
 
 
 # 中文说明：函数「_evidence_domain」负责完成该步骤的输入处理、核心逻辑和结果返回。
@@ -193,17 +180,7 @@ def _evidence_domain(source: SourceEvidence) -> str:
     (news.google.com) is not the publishing domain. Using the declared source
     name here preserves the independent-domain gate without weakening it.
     """
-    name = source.name.casefold()
-    aliases = (
-        (("reuters",), "reuters.com"),
-        (("bbc",), "bbc.co.uk"),
-        (("华尔街", "wallstreet"), "wallstreetcn.com"),
-        (("微博", "weibo"), "weibo.com"),
-    )
-    for needles, domain in aliases:
-        if any(needle in name for needle in needles):
-            return domain
-    return _source_domain(source.url)
+    return _evidence_domain_module(source)
 
 
 # 中文说明：函数「_source_weight」负责完成该步骤的输入处理、核心逻辑和结果返回。
@@ -224,28 +201,13 @@ def _news_relevance(item: dict, seed: TopicSeed) -> float:
     score deliberately conservative: ASCII words are matched as words and
     Chinese text is matched using meaningful 2+ character chunks.
     """
-    haystack = f"{item.get('title', '')} {item.get('summary', '')}".casefold()
-    seed_text = f"{seed.domain} {seed.brief}".casefold()
-    ascii_terms = re.findall(r"[a-z0-9][a-z0-9+#.-]{1,}", seed_text)
-    cjk_terms: list[str] = []
-    for run in re.findall(r"[\u4e00-\u9fff]{2,}", seed_text):
-        cjk_terms.extend(run[index : index + 2] for index in range(len(run) - 1))
-    # Very generic words would make an unrelated feed look relevant.
-    stopwords = {"近期", "热点", "内容", "生产", "关注", "普通", "一线", "创作者", "创业者"}
-    terms = list(dict.fromkeys([term for term in ascii_terms + cjk_terms if term not in stopwords]))
-    if not terms:
-        return 0.0
-    matches = sum(1 for term in terms if term in haystack)
-    return min(1.0, matches / max(1, min(5, len(terms))))
+    return _news_relevance_module(item, seed)
 
 
 # 中文说明：函数「_task_overlap_score」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _task_overlap_score(text: str, seed: TopicSeed) -> float:
     """Score overlap with the requested domain, keeping audience boilerplate out."""
-    domain_score = _news_relevance({"title": text}, TopicSeed(domain=seed.domain, brief="", audience=""))
-    brief_score = _news_relevance({"title": text}, TopicSeed(domain="", brief=seed.brief, audience=""))
-    # The explicit domain is the strongest signal; the brief adds context.
-    return min(1.0, domain_score * 0.70 + brief_score * 0.30)
+    return _task_overlap_score_module(text, seed)
 
 
 # 中文说明：函数「_topic_heat_score」负责完成该步骤的输入处理、核心逻辑和结果返回。
@@ -311,14 +273,13 @@ def _is_diagnostic_topic(topic: Topic) -> bool:
     a headline.  Check the title and supporting hint because models often put
     the diagnostic sentence in one of those fields.
     """
-    text = " ".join((topic.title, topic.source_hint, topic.angle)).casefold()
-    return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in _DIAGNOSTIC_TOPIC_PATTERNS)
+    return _is_diagnostic_topic_module(topic)
 
 
 # 中文说明：函数「_clean_topic_title」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _clean_topic_title(title: str) -> str:
     # ``（候选）`` is a model label, not part of the actual headline.
-    return re.sub(r"^\s*[（(]\s*候选\s*[）)]\s*", "", title).strip()
+    return _clean_topic_title_module(title)
 
 
 # 中文说明：函数「_topic_match_tokens」负责完成该步骤的输入处理、核心逻辑和结果返回。
@@ -353,26 +314,7 @@ def _source_supports_topic(topic: Topic, item: dict) -> bool:
 # 中文说明：函数「_augment_topic_sources」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _augment_topic_sources(topics: list[Topic], raw_items: list[dict]) -> None:
     """Attach corroborating fetched items the model omitted from ``sources``."""
-    for topic in topics:
-        known_urls = {source.url for source in topic.sources}
-        for item in raw_items:
-            url = str(item.get("url") or "").strip()
-            if not url or url in known_urls or not _source_supports_topic(topic, item):
-                continue
-            published_at = _parse_public_datetime(item.get("pubdate") or item.get("time"))
-            name = str(item.get("source") or "公开来源").strip()
-            title = str(item.get("title") or "").strip()
-            if not published_at or not name or not title:
-                continue
-            topic.sources.append(
-                SourceEvidence(
-                    name=name,
-                    url=url,
-                    published_at=published_at,
-                    claim=str(item.get("summary") or title).strip(),
-                )
-            )
-            known_urls.add(url)
+    _augment_topic_sources_module(topics, raw_items, _parse_public_datetime)
 
 
 # 中文说明：函数「_rank_news_items」负责完成该步骤的输入处理、核心逻辑和结果返回。
@@ -382,43 +324,7 @@ def _rank_news_items(items: list[dict], seed: TopicSeed) -> list[dict]:
     Ranking is only a prioritisation hint. It never turns a single source into
     a verified fact; the later source-domain gate remains authoritative.
     """
-    now = datetime.now().timestamp()
-    ranked: list[dict] = []
-    for index, item in enumerate(items):
-        copy = dict(item)
-        try:
-            published = float(copy.get("pubdate") or 0)
-        except (TypeError, ValueError):
-            published = 0
-        age_days = max(0.0, (now - published) / 86400) if published else 14.0
-        recency = max(0.0, 1.0 - age_days / 14.0)
-        engagement = _coerce_count(
-            copy.get("engagement")
-            or copy.get("hot")
-            or copy.get("heat")
-            or copy.get("read_count")
-            or copy.get("view_count")
-        )
-        engagement_signal = min(1.0, engagement / 1_000_000) if engagement else 0.0
-        score = (
-            # Domain overlap is the primary filter. Engagement is only a small
-            # tie-breaker so a generic hot-search list cannot dominate.
-            _task_overlap_score(f"{copy.get('title', '')} {copy.get('summary', '')}", seed) * 70
-            + _source_weight(copy) * 15
-            + recency * 10
-            + engagement_signal * 5
-        )
-        copy["rank_score"] = round(score, 3)
-        copy["rank_reason"] = {
-            "source_weight": _source_weight(copy),
-            "recency": round(recency, 3),
-            "relevance": round(_news_relevance(copy, seed), 3),
-            "engagement": engagement,
-        }
-        copy["_fetch_order"] = index
-        ranked.append(copy)
-    ranked.sort(key=lambda value: (-float(value.get("rank_score", 0)), value.get("_fetch_order", 0)))
-    return ranked
+    return _rank_news_items_module(items, seed, NEWS_SOURCE_WEIGHTS)
 
 
 # 中文说明：函数「_diversify_news_items」负责完成该步骤的输入处理、核心逻辑和结果返回。
@@ -430,27 +336,7 @@ def _diversify_news_items(items: list[dict], limit: int = NEWS_FETCH_LIMIT) -> l
     event.  Take a small round-robin sample from every source, then fill any
     remaining slots by rank.
     """
-    if len(items) <= limit:
-        return items
-    groups: dict[str, list[dict]] = {}
-    for item in items:
-        key = str(item.get("source") or item.get("channel") or "unknown")
-        groups.setdefault(key, []).append(item)
-    selected: list[dict] = []
-    # One item per source per round gives every configured source a chance.
-    round_index = 0
-    while len(selected) < limit:
-        progressed = False
-        for group in groups.values():
-            if round_index < len(group):
-                selected.append(group[round_index])
-                progressed = True
-                if len(selected) >= limit:
-                    break
-        if not progressed:
-            break
-        round_index += 1
-    return selected
+    return _diversify_news_items_module(items, limit)
 
 
 # 中文说明：函数「_normalize_source_evidence」负责完成该步骤的输入处理、核心逻辑和结果返回。
@@ -597,295 +483,76 @@ def _evidence_only_topics(raw_items: list[dict], seed: TopicSeed | None = None) 
     return _validate_topics(topics, seed)
 
 
-# 中文说明：函数「_validate_topics」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 中文说明：保留旧私有函数名，实际校验逻辑已迁移到 topic_validation 模块。
 def _validate_topics(topics: list[Topic], seed: TopicSeed | None = None) -> list[Topic]:
-    """Validate all candidates before selecting one for downstream work.
-
-    The model may suggest a verification flag, but it is not trusted. Every
-    candidate is checked locally against its cited URLs, and only independent
-    domains can pass the gate. Sorting happens after the complete pass so the
-    first valid candidate cannot short-circuit validation of the rest.
-    """
-    merged: dict[str, Topic] = {}
-    for topic in topics:
-        topic.title = _clean_topic_title(topic.title)
-        if not topic.title or _is_diagnostic_topic(topic):
-            continue
-        key = " ".join(topic.title.casefold().split())
-        previous = merged.get(key)
-        if previous is None:
-            merged[key] = topic
-            continue
-        known_urls = {source.url for source in previous.sources}
-        previous.sources.extend(source for source in topic.sources if source.url not in known_urls)
-        previous.heat = max(previous.heat, topic.heat)
-        if not previous.angle.strip() and topic.angle.strip():
-            previous.angle = topic.angle
-        if not previous.risk.strip() and topic.risk.strip():
-            previous.risk = topic.risk
-
-    validated: list[Topic] = []
-    for topic in merged.values():
-        domains = {_evidence_domain(source) for source in topic.sources if _evidence_domain(source)}
-        independent = len(topic.sources) >= 2 and len(domains) >= 2
-        topic.verification_status = "verified" if independent else "unverified"
-        topic.checked_at = topic.checked_at or _now()
-        if independent:
-            topic.cross_check_note = f"已完成全量候选核验：引用 {len(topic.sources)} 个来源，覆盖 {len(domains)} 个独立域名。"
-            topic.verification_note = "已通过不同域名来源交叉验证；仍需人工复核原文。"
-        else:
-            topic.cross_check_note = f"已完成全量候选核验：当前仅有 {len(domains)} 个独立域名来源。"
-            topic.verification_note = "来源不足或域名不独立，不得作为已核实事实发布。"
-        if seed is not None:
+    validated = _validate_topics_module(topics, None, now=_now)
+    if seed is not None:
+        for topic in validated:
             topic.heat = _topic_heat_score(topic, seed)
-        validated.append(topic)
-    return sorted(validated, key=lambda topic: (-topic.heat, topic.title))
+        validated.sort(key=lambda topic: (-topic.heat, topic.title))
+    return validated
 
 
 # 中文说明：异步函数「_run_news_aggregator」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def _run_news_aggregator(timeout_seconds: int | None = None) -> list[dict]:
-    source_mode = str(get_settings().news_source_mode or "live_then_fixture").strip().lower()
-    if source_mode == "fixture":
-        return _load_news_fixture(get_settings().news_fixture_path)
-    if timeout_seconds is None:
-        timeout_seconds = get_settings().news_fetch_timeout_seconds
-    try:
-        if not NEWS_FETCH.exists():
-            return await _run_builtin_news_aggregator(timeout_seconds)
-        return await _run_news_skill(timeout_seconds)
-    except Exception:
-        if source_mode != "live_then_fixture":
-            raise
-        return _load_news_fixture(get_settings().news_fixture_path)
+    settings = get_settings()
+    return await _run_news_aggregator_module(
+        timeout_seconds,
+        source_mode=settings.news_source_mode,
+        fixture_path=settings.news_fixture_path,
+        fetch_path=NEWS_FETCH,
+        skill_dir=NEWS_SKILL_DIR,
+        rss_feeds=_configured_rss_feeds_module(settings.news_rss_feeds),
+        fetch_limit=NEWS_FETCH_LIMIT,
+        parse_datetime=_parse_public_datetime,
+    )
 
 
 # 中文说明：异步函数「_run_news_skill」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def _run_news_skill(timeout_seconds: int) -> list[dict]:
-    command = [
-        sys.executable,
-        str(NEWS_FETCH),
-        "--source",
-        "weibo,wallstreetcn,bbc_top,bbc_chinese,reuters",
-        "--limit",
-        str(NEWS_FETCH_LIMIT),
-        "--no-save",
-    ]
-    run_options = {
-        "cwd": NEWS_SKILL_DIR,
-        "env": os.environ.copy(),
-        "stdout": subprocess.PIPE,
-        "stderr": subprocess.PIPE,
-        "check": False,
-    }
-    if timeout_seconds > 0:
-        run_options["timeout"] = timeout_seconds
-    try:
-        # Windows selector event loops do not implement asyncio subprocesses.
-        # Run the blocking process in a worker so both loop policies work.
-        completed = await asyncio.to_thread(subprocess.run, command, **run_options)
-    except subprocess.TimeoutExpired as exc:
-        timeout_label = f"{timeout_seconds} seconds" if timeout_seconds > 0 else "the configured limit"
-        raise RuntimeError(f"news-aggregator-skill fetch timed out after {timeout_label}") from exc
-
-    stdout = completed.stdout or b""
-    # 中文说明：上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-    # 中文说明：上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-    stderr = completed.stderr or b""
-    if completed.returncode != 0:
-        detail = stderr.decode("utf-8", errors="replace")[-1200:]
-        raise RuntimeError(f"news-aggregator-skill 执行失败：{detail or stdout.decode('utf-8', errors='replace')[-500:]}")
-    try:
-        data = json.loads(stdout.decode("utf-8", errors="replace"))
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("news-aggregator-skill 返回了无效 JSON") from exc
-    if not isinstance(data, list):
-        raise RuntimeError("news-aggregator-skill 返回格式不是新闻列表")
-    normalized: list[dict] = []
-    for item in data:
-        normalized_item = dict(item)
-        if not normalized_item.get("pubdate"):
-            published = normalized_item.get("time") or normalized_item.get("published_at")
-            if published:
-                try:
-                    if isinstance(published, (int, float)):
-                        normalized_item["pubdate"] = int(published)
-                    else:
-                        parsed = _parse_public_datetime(published)
-                        if parsed:
-                            normalized_item["pubdate"] = int(parsed.timestamp())
-                except (TypeError, ValueError, OverflowError):
-                    pass
-        normalized.append(normalized_item)
-    return normalized
+    settings = get_settings()
+    return await _run_news_skill_module(
+        timeout_seconds,
+        fetch_path=NEWS_FETCH,
+        skill_dir=NEWS_SKILL_DIR,
+        fetch_limit=NEWS_FETCH_LIMIT,
+        parse_datetime=_parse_public_datetime,
+    )
 
 
 # 中文说明：函数「_configured_news_rss_feeds」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _configured_news_rss_feeds() -> tuple[tuple[str, str], ...]:
-    configured = str(get_settings().news_rss_feeds or "").strip()
-    if not configured:
-        return NEWS_RSS_FEEDS
-    feeds: list[tuple[str, str]] = []
-    for entry in configured.split(","):
-        name, separator, url = entry.partition("|")
-        if not separator:
-            url = name
-            name = urlparse(url).netloc or "RSS"
-        if url.strip().startswith(("http://", "https://")):
-            feeds.append((name.strip() or urlparse(url).netloc or "RSS", url.strip()))
-    return tuple(feeds) or NEWS_RSS_FEEDS
+    return _configured_rss_feeds_module(get_settings().news_rss_feeds)
 
 
 # 中文说明：函数「_load_news_fixture」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _load_news_fixture(path_value: str | None) -> list[dict]:
-    path = Path(path_value).expanduser() if path_value else ROOT_DIR / "tests" / "fixtures" / "hotspots.json"
-    if not path.is_absolute():
-        path = ROOT_DIR / path
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"热点 fixture 不可用：{path}（{exc}）") from exc
-    if not isinstance(payload, list):
-        raise RuntimeError(f"热点 fixture 必须是新闻列表：{path}")
-    normalized: list[dict] = []
-    for item in payload:
-        if not isinstance(item, dict):
-            continue
-        copy = dict(item, channel="local-fixture")
-        published = _parse_public_datetime(copy.get("pubdate") or copy.get("published_at") or copy.get("time"))
-        if published:
-            copy["pubdate"] = int(published.timestamp())
-        normalized.append(copy)
-    return normalized
+    return _load_news_fixture_module(path_value, parse_datetime=_parse_public_datetime)
 
 
 # 中文说明：异步函数「_run_builtin_news_aggregator」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def _run_builtin_news_aggregator(timeout_seconds: int) -> list[dict]:
-    """Keep the radar usable when the optional news skill is not installed."""
-    timeout = None if timeout_seconds <= 0 else timeout_seconds
-
-    # 中文说明：异步函数「fetch_feed」负责完成该步骤的输入处理、核心逻辑和结果返回。
-    async def fetch_feed(client: httpx.AsyncClient, name: str, url: str) -> list[dict]:
-        response = await client.get(url)
-        response.raise_for_status()
-        root = ElementTree.fromstring(response.content)
-        items: list[dict] = []
-        for item in root.findall(".//item")[:NEWS_FETCH_LIMIT]:
-            # 中文说明：函数「text」负责完成该步骤的输入处理、核心逻辑和结果返回。
-            def text(tag: str) -> str:
-                return (item.findtext(tag) or "").strip()
-
-            published = _parse_public_datetime(text("pubDate"))
-            link = text("link")
-            title = text("title")
-            if not title or not link or not published:
-                continue
-            items.append(
-                {
-                    "title": title,
-                    "url": link,
-                    "source": name,
-                    "summary": text("description"),
-                    "pubdate": int(published.timestamp()),
-                    "channel": "builtin-rss-fallback",
-                }
-            )
-        return items
-    # 中文说明：上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-    # 中文说明：上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-
-    results: list[dict] = []
-    errors: list[str] = []
-    try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-            responses = await asyncio.gather(
-                *(fetch_feed(client, name, url) for name, url in _configured_news_rss_feeds()),
-                return_exceptions=True,
-            )
-    except httpx.HTTPError as exc:
-        raise RuntimeError(f"内置 RSS 热点回退网络错误：{exc}") from exc
-    for (name, _), response in zip(_configured_news_rss_feeds(), responses):
-        if isinstance(response, Exception):
-            errors.append(f"{name}: {response}")
-        else:
-            results.extend(response)
-    if not results and errors:
-        raise RuntimeError("news-aggregator-skill 未安装，内置 RSS 回退也失败：" + "; ".join(errors))
-    return results
+    return await _run_builtin_news_aggregator_module(
+        timeout_seconds,
+        feeds=_configured_news_rss_feeds(),
+        fetch_limit=NEWS_FETCH_LIMIT,
+        parse_datetime=_parse_public_datetime,
+    )
 
 
 # 中文说明：函数「_socialdatax_error」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _socialdatax_error(response: httpx.Response, payload: object) -> str:
-    if isinstance(payload, dict):
-        message = str(payload.get("message") or "").strip()
-        code = payload.get("code")
-        if message and code is not None:
-            return f"{message}（code {code}）"
-        if message:
-            return message
-    return f"HTTP {response.status_code}"
+    return _socialdatax_error_module(response, payload)
 
 
 # 中文说明：函数「_socialdatax_payload_failed」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _socialdatax_payload_failed(payload: object) -> bool:
-    if not isinstance(payload, dict) or "code" not in payload:
-        return False
-    code = payload.get("code")
-    if code in (0, 200, "0", "200", "success", "SUCCESS"):
-        return False
-    return payload.get("success") is not True
+    return _socialdatax_payload_failed_module(payload)
 
 
 # 中文说明：函数「_normalize_socialdatax_notes」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _normalize_socialdatax_notes(payload: object) -> list[dict]:
-    if not isinstance(payload, dict):
-        raise RuntimeError("SocialDataX 返回格式不是笔记列表")
-    raw_items = payload.get("items") or payload.get("data")
-    if isinstance(raw_items, dict):
-        raw_items = raw_items.get("items") or raw_items.get("list") or raw_items.get("notes")
-    if not isinstance(raw_items, list):
-        raise RuntimeError("SocialDataX 返回格式不是笔记列表")
-
-    notes: list[dict] = []
-    for rank, item in enumerate(raw_items, start=1):
-        if not isinstance(item, dict):
-            continue
-        title = str(item.get("title") or "").strip()
-        note_url = str(item.get("note_url") or item.get("url") or item.get("link") or "").strip()
-        if not title or not note_url.startswith(("http://", "https://")):
-            continue
-        published_at = _parse_public_datetime(
-            item.get("publish_time") or item.get("published_at") or item.get("time")
-        )
-        if not published_at:
-            continue
-        author = item.get("author") if isinstance(item.get("author"), dict) else {}
-        content = str(
-    # 中文说明：上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-    # 中文说明：上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-            item.get("transcript")
-            or item.get("speech_text")
-            or item.get("content")
-            or item.get("description")
-            or ""
-        ).strip()
-        note_type = str(item.get("note_type") or item.get("type") or "").strip().casefold()
-        notes.append(
-            {
-                "title": title,
-                "summary": str(item.get("summary") or "").strip(),
-                "note_url": note_url,
-                "note_type": note_type,
-                "like_count": _coerce_count(item.get("like_count")),
-                "collect_count": _coerce_count(item.get("collect_count")),
-                "comment_count": _coerce_count(item.get("comment_count")),
-                "share_count": _coerce_count(item.get("share_count")),
-                "publish_time": published_at.isoformat(),
-                "author": str(author.get("name") or "").strip(),
-                "content": content,
-                "rank": rank,
-            }
-        )
-    return notes
+    return _normalize_socialdatax_notes_module(payload, _parse_public_datetime, _coerce_count)
 
 
 # 中文说明：异步函数「_run_socialdatax_note_search」负责完成该步骤的输入处理、核心逻辑和结果返回。
@@ -895,265 +562,34 @@ async def _run_socialdatax_note_search(
     *,
     sort_type: str = "like_count_descending",
 ) -> list[dict]:
-    """Fetch high-engagement XHS samples for the viral-analysis stage only."""
-    api_key = (settings.socialdatax_api_key or "").strip()
-    if not api_key:
-        return []
-    request = {
-        "keyword": keyword.strip(),
-        "sort_type": sort_type,
-        "note_type": "all",
-        "publish_time_range": "half_year",
-        "page_token": "",
-    }
-    timeout = None if settings.socialdatax_timeout_seconds <= 0 else settings.socialdatax_timeout_seconds
-    base_url = settings.socialdatax_base_url.strip().rstrip("/") or "https://mcp.socialdatax.com"
-    headers = {
-        "Accept": "application/json",
-        "Authorization": f"Bearer {api_key}",
-        "X-API-Key": api_key,
-        "Content-Type": "application/json",
-    }
-    try:
-        async with httpx.AsyncClient(
-            base_url=base_url,
-            timeout=timeout,
-            follow_redirects=True,
-        ) as client:
-            response = await client.post(SOCIALDATAX_NOTE_SEARCH_PATH, headers=headers, json=request)
-    except httpx.TimeoutException as exc:
-        raise RuntimeError("SocialDataX 笔记搜索超时") from exc
-    except httpx.HTTPError as exc:
-        raise RuntimeError(f"SocialDataX 笔记搜索网络错误：{exc}") from exc
-
-    try:
-        payload = response.json()
-    except ValueError as exc:
-        raise RuntimeError(f"SocialDataX 返回了无效 JSON（HTTP {response.status_code}）") from exc
-    if response.status_code >= 400 or _socialdatax_payload_failed(payload):
-        raise RuntimeError(f"SocialDataX 笔记搜索失败：{_socialdatax_error(response, payload)}")
-    return _normalize_socialdatax_notes(payload)
+    return await _run_socialdatax_note_search_module(keyword, settings, _normalize_socialdatax_notes, sort_type=sort_type)
 
 
 # 中文说明：异步函数「_run_socialdatax_transcript」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def _run_socialdatax_transcript(note_url: str, settings: Settings) -> str:
-    """Try the paid video-to-speech step for a video sample.
-
-    Transcript extraction is best-effort: an unavailable transcript must not
-    discard otherwise valid ranking samples or stop the whole workflow.
-    """
-    api_key = (settings.socialdatax_api_key or "").strip()
-    timeout = None if settings.socialdatax_timeout_seconds <= 0 else settings.socialdatax_timeout_seconds
-    base_url = settings.socialdatax_base_url.strip().rstrip("/") or "https://mcp.socialdatax.com"
-    headers = {
-        "Accept": "application/json",
-        "Authorization": f"Bearer {api_key}",
-        "X-API-Key": api_key,
-    }
-    try:
-        async with httpx.AsyncClient(base_url=base_url, timeout=timeout, follow_redirects=True) as client:
-            response = await client.post(
-                SOCIALDATAX_VIDEO_TRANSCRIPT_PATH,
-                headers=headers,
-                json={"url": note_url, "note_url": note_url},
-            )
-            payload = response.json()
-    except (httpx.HTTPError, ValueError, asyncio.TimeoutError) as exc:
-        raise RuntimeError(f"视频口播提取失败：{exc}") from exc
-    if response.status_code >= 400 or _socialdatax_payload_failed(payload):
-        raise RuntimeError(f"视频口播提取失败：{_socialdatax_error(response, payload)}")
-    if isinstance(payload, dict):
-        value = payload.get("transcript") or payload.get("speech_text") or payload.get("content")
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-        data = payload.get("data")
-        if isinstance(data, dict):
-            value = data.get("transcript") or data.get("speech_text") or data.get("content")
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-    raise RuntimeError("视频口播提取返回为空")
+    return await _run_socialdatax_transcript_module(note_url, settings)
 
 
 # 中文说明：异步函数「_enrich_socialdatax_notes」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def _enrich_socialdatax_notes(notes: list[dict], settings: Settings) -> tuple[list[dict], int, list[str]]:
-    enriched: list[dict] = []
-    transcript_count = 0
-    errors: list[str] = []
-    for note in notes:
-        current = dict(note)
-        is_video = current.get("note_type", "") in {"video", "视频", "videonote"}
-        if is_video and not current.get("content"):
-            try:
-                current["content"] = await _run_socialdatax_transcript(current["note_url"], settings)
-                current["transcript_source"] = "socialdatax-video-transcript"
-                transcript_count += 1
-            except Exception as exc:
-                current["transcript_error"] = str(exc)
-                errors.append(f"{current['title']}：{exc}")
-        enriched.append(current)
-    return enriched, transcript_count, errors
+    return await _enrich_socialdatax_notes_module(notes, settings)
 
 
 # 中文说明：函数「_socialdatax_context」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _socialdatax_context(notes: list[dict], *, label: str = "样本") -> str:
-    if not notes:
-        return (
-            "## SocialDataX 小红书样本\n\n"
-            "本次没有可用的 SocialDataX 样本；不要编造点赞、收藏、评论、分享数据，"
-            "只能基于选题本身给出待验证的传播假设。"
-        )
-    lines = [
-        f"## SocialDataX 小红书{label}（原始数据）",
-        "",
-        "以下互动量来自 SocialDataX 搜索结果，仅用于样本比较，不代表平台整体趋势：",
-        "",
-    ]
-    for index, note in enumerate(notes, start=1):
-        lines.extend(
-            [
-                f"{index}. 排名：{note.get('rank', index)}；标题：{note['title']}",
-                f"   - 笔记链接：{note['note_url']}",
-                f"   - 作者：{note.get('author') or '未提供'}；类型：{note.get('note_type') or '未提供'}；发布时间：{note.get('publish_time') or '未提供'}",
-                f"   - 点赞：{note.get('like_count', 0)}；收藏：{note.get('collect_count', 0)}；评论：{note.get('comment_count', 0)}；分享：{note.get('share_count', 0)}",
-                f"   - 摘要/口播：{note.get('content') or note.get('summary') or '未提供'}",
-                *( [f"   - 口播提取：{note['transcript_source']}"] if note.get("transcript_source") else [] ),
-                *( [f"   - 口播提取失败：{note['transcript_error']}"] if note.get("transcript_error") else [] ),
-            ]
-        )
-    return "\n".join(lines)
+    return _socialdatax_context_module(notes, label=label)
 
 
 # 中文说明：异步函数「analyze_stocks」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def analyze_stocks(request: StockAnalysisRequest, settings: Settings) -> StockAnalysisResult:
-    """Run the installed Stock Analysis Skill for finance/stock requests."""
-    cache_key = (request.stocks.strip().upper(), request.days, request.include_news)
-    cached = STOCK_ANALYSIS_CACHE.get(cache_key)
-    if cached and settings.stock_cache_ttl_seconds > 0 and time.monotonic() - cached[0] < settings.stock_cache_ttl_seconds:
-        result = cached[1].model_copy(deep=True)
-        result.source_status = {**result.source_status, "cache": "hit"}
-        return result
-    if not STOCK_DATA_SCRIPT.exists():
-        raise FileNotFoundError(f"Stock Analysis Skill data script not found: {STOCK_DATA_SCRIPT}")
-
-    env = os.environ.copy()
-    for name, value in {
-        "TUSHARE_TOKEN": settings.tushare_token,
-        "TAVILY_API_KEY": settings.tavily_api_key,
-        "SERPAPI_KEY": settings.serpapi_key,
-    }.items():
-        if value:
-            env[name] = value
-
-    command = [sys.executable, str(STOCK_DATA_SCRIPT), "--stocks", request.stocks, "--days", str(request.days)]
-    if request.include_news:
-        command.append("--news")
-    process_error: str | None = None
-    stdout = b""
-    stderr = b""
-    completed = None
-    for attempt in range(settings.stock_fetch_retries + 1):
-        try:
-            completed = await asyncio.wait_for(
-                asyncio.to_thread(
-                    subprocess.run,
-                    command,
-                    cwd=STOCK_SKILL_DIR,
-                    env=env,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    check=False,
-                ),
-                timeout=120,
-            )
-            stdout, stderr = completed.stdout or b"", completed.stderr or b""
-            if completed.returncode == 0:
-                process_error = None
-                break
-            process_error = stderr.decode("utf-8", errors="replace").strip() or "Stock Analysis Skill returned a non-zero exit code"
-        except asyncio.TimeoutError:
-            process_error = "Stock Analysis Skill data fetch exceeded 120 seconds"
-        if attempt < settings.stock_fetch_retries:
-            await asyncio.sleep(min(2 ** attempt, 4))
-
-    raw_text = stdout.decode("utf-8", errors="replace")
-    if process_error is None and completed is not None and completed.returncode != 0:
-        process_error = stderr.decode("utf-8", errors="replace").strip() or raw_text.strip()
-    try:
-        raw_data = json.loads(raw_text)
-    except json.JSONDecodeError:
-        raw_data = {}
-        process_error = process_error or f"Stock Analysis Skill returned invalid JSON: {raw_text[-500:]}"
-    # 中文说明：上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-    # 中文说明：上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-
-    if process_error:
-        raw_data = {
-            **(raw_data if isinstance(raw_data, dict) else {}),
-            "errors": [
-                *((raw_data.get("errors") or []) if isinstance(raw_data, dict) else []),
-                {"type": "data_fetch", "error": process_error},
-            ],
-            "total_success": 0,
-        }
-
-    fallback = json.dumps(raw_data, ensure_ascii=False, indent=2)
-    prompt = STOCK_ANALYSIS_PROMPT.read_text(encoding="utf-8") if STOCK_ANALYSIS_PROMPT.exists() else ""
-    template = STOCK_OUTPUT_TEMPLATE.read_text(encoding="utf-8") if STOCK_OUTPUT_TEMPLATE.exists() else ""
-    gateway = LlmGateway(settings)
-    result = await gateway.complete(
-        system=(
-            "你是 SignalForge 的股票助手。严格依据输入的真实数据和新闻输出中文股票决策看板。"
-            "不得编造价格或新闻；缺失数据必须明确标注。必须包含数据来源、分析时间、风险和免责声明。"
-            "这不是投资建议。\n\n分析框架：\n" + prompt + "\n\n输出模板：\n" + template
-        ),
-        user="请分析以下 Stock Analysis Skill 数据：\n" + fallback,
-        fallback=(
-            (f"# 股票数据暂不可用\n\n{process_error}\n\n请稍后重试。\n\n" if process_error else "")
-            + fallback
-            + "\n\n> 免责声明：以上分析仅供参考，不构成投资建议。投资有风险，入市需谨慎。"
-        ),
-    )
-    source_status = {
-        str(name): str(status)
-        for name, status in (raw_data.get("data_sources") or {}).items()
-    } if isinstance(raw_data, dict) else {}
-    source_status["cache"] = "miss"
-    if process_error:
-        data_status = "unavailable"
-    elif isinstance(raw_data, dict) and raw_data.get("total_success", 0) < raw_data.get("total_requested", 0):
-        data_status = "partial"
-    else:
-        data_status = "ok"
-    result = StockAnalysisResult(
-        skill_source="https://github.com/liusai0820/Stock-Analysis-Skill",
-        stocks=request.stocks,
-        report=result.content,
-        raw_data=raw_data,
-        data_script=str(STOCK_DATA_SCRIPT),
-        news_enabled=request.include_news,
-        disclaimer="以上分析仅供参考，不构成投资建议。投资有风险，入市需谨慎。",
-        data_status=data_status,
-        source_status=source_status,
-    )
-    if data_status != "unavailable":
-        STOCK_ANALYSIS_CACHE[cache_key] = (time.monotonic(), result.model_copy(deep=True))
-    return result
+    """Backward-compatible workflow facade for the extracted stock module."""
+    return await _analyze_stocks_module(request, settings)
 
 
 # 中文说明：函数「stock_sources_health」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def stock_sources_health(settings: Settings) -> dict[str, object]:
-    libraries = {name: bool(importlib.util.find_spec(name)) for name in ("tushare", "efinance", "akshare", "yfinance")}
-    return {
-        "status": "ok" if any(libraries.values()) else "unavailable",
-        "libraries": {name: "available" if available else "not_installed" for name, available in libraries.items()},
-        "credentials": {
-            "tushare": "configured" if settings.tushare_token else "not_configured",
-            "tavily": "configured" if settings.tavily_api_key else "not_configured",
-            "serpapi": "configured" if settings.serpapi_key else "not_configured",
-        },
-        "retry_limit": settings.stock_fetch_retries,
-        "cache_ttl_seconds": settings.stock_cache_ttl_seconds,
-    }
+    """Backward-compatible workflow facade for the extracted stock module."""
+    return _stock_sources_health_module(settings)
 
 
 # 中文说明：函数「_now」负责完成该步骤的输入处理、核心逻辑和结果返回。
@@ -1163,64 +599,22 @@ def _now() -> datetime:
 
 # 中文说明：函数「_write_artifact」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _write_artifact(run_dir: Path, agent_id: str, filename: str, content: str) -> str:
-    agent_dir = run_dir / agent_id
-    agent_dir.mkdir(parents=True, exist_ok=True)
-    path = agent_dir / filename
-    path.write_text(content, encoding="utf-8")
-    return str(path)
+    return _write_artifact_module(run_dir, agent_id, filename, content)
 
 
 # 中文说明：函数「_output」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _output(run_dir: Path, agent_id: str, title: str, content: str, output_dir: str | None = None) -> AgentOutput:
-    agent = AGENT_BY_ID[agent_id]
-    if output_dir is None:
-        configured = get_output_directory_settings()
-        if agent_id == "operator":
-            output_dir = configured.operator_output_dir.strip() or None
-        elif agent_id == "video_editor":
-            output_dir = configured.video_output_dir.strip() or None
-    path = _write_artifact(Path(output_dir).expanduser().resolve(), agent_id, f"{agent_id}.md", content) if output_dir else _write_artifact(run_dir, agent_id, f"{agent_id}.md", content)
-    return AgentOutput(
-        agent_id=agent_id,
-        agent_name=agent.name,
-        title=title,
-        content=content,
-        artifact_path=path,
-        created_at=_now(),
-    )
+    return _output_module(run_dir, agent_id, title, content, output_dir, now=_now)
 
 
 # 中文说明：函数「_checkpoint」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _checkpoint(workflow: WorkflowRun) -> None:
-    run_dir = Path(workflow.run_dir)
-    run_dir.mkdir(parents=True, exist_ok=True)
-    path = run_dir / "run-state.json"
-    temporary = run_dir / "run-state.json.tmp"
-    temporary.write_text(
-        json.dumps(workflow.model_dump(mode="json"), ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    temporary.replace(path)
+    _checkpoint_module(workflow)
 
 
 # 中文说明：函数「_workflow_log_path」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _workflow_log_path(workflow: WorkflowRun) -> Path:
-    """Return the canonical log path and migrate the previous JSONL filename."""
-    run_dir = Path(workflow.run_dir)
-    run_dir.mkdir(parents=True, exist_ok=True)
-    path = run_dir / WORKFLOW_LOG_FILENAME
-    legacy_path = run_dir / LEGACY_WORKFLOW_LOG_FILENAME
-
-    if legacy_path.exists():
-        if path.exists():
-            with legacy_path.open("rb") as source, path.open("ab") as destination:
-                destination.write(source.read())
-            legacy_path.unlink()
-        else:
-            legacy_path.replace(path)
-
-    workflow.log_file = str(path)
-    return path
+    return _workflow_log_path_module(workflow, WORKFLOW_LOG_FILENAME, LEGACY_WORKFLOW_LOG_FILENAME)
 
 
 # 中文说明：函数「_log」负责完成该步骤的输入处理、核心逻辑和结果返回。
@@ -1232,18 +626,7 @@ def _log(
     level: str = "info",
     detail: str | None = None,
 ) -> None:
-    """Persist a human-readable event and structured diagnostic immediately."""
-    entry = WorkflowLog(
-        timestamp=_now(),
-        level=level if level in {"info", "warning", "error"} else "info",
-        stage=stage,
-        message=message,
-        detail=detail,
-    )
-    workflow.logs.append(entry)
-    with _workflow_log_path(workflow).open("a", encoding="utf-8") as log_file:
-        log_file.write(json.dumps(entry.model_dump(mode="json"), ensure_ascii=False) + "\n")
-    _checkpoint(workflow)
+    _log_module(workflow, message, stage=stage, level=level, detail=detail, now=_now, log_filename=WORKFLOW_LOG_FILENAME, legacy_filename=LEGACY_WORKFLOW_LOG_FILENAME)
 
 
 # 中文说明：函数「_load_persisted_runs」负责完成该步骤的输入处理、核心逻辑和结果返回。
