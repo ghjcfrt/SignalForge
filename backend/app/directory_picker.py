@@ -20,14 +20,14 @@ class _Request:
 
 
 class DirectoryPicker:
-    # 中文说明：函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def __init__(self) -> None:
         self._requests: queue.Queue[_Request] = queue.Queue()
         self._thread: threading.Thread | None = None
         self._start_lock = threading.Lock()
         self._failed = False
 
-    # 中文说明：函数「_ensure_started」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「_ensure_started」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def _ensure_started(self) -> None:
         with self._start_lock:
             if self._thread and self._thread.is_alive():
@@ -39,7 +39,7 @@ class DirectoryPicker:
             )
             self._thread.start()
 
-    # 中文说明：函数「_worker」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「_worker」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def _worker(self) -> None:
         try:
             import tkinter as tk
@@ -69,7 +69,7 @@ class DirectoryPicker:
             self._failed = True
             self._fail_pending()
 
-    # 中文说明：函数「_fail_pending」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「_fail_pending」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def _fail_pending(self) -> None:
         while True:
             try:
@@ -79,7 +79,7 @@ class DirectoryPicker:
             request.path = None
             request.done.set()
 
-    # 中文说明：函数「pick」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「pick」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def pick(self) -> str | None:
         self._ensure_started()
         request = _Request(done=threading.Event())

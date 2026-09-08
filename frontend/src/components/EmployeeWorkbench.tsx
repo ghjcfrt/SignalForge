@@ -22,7 +22,7 @@ const viewMeta: Record<string, { title: string; subtitle: string }> = {
 function cn(...classes: Array<string | false | null | undefined>) { return classes.filter(Boolean).join(" "); }
 function readSaved<T>(key: string, fallback: T): T { try { const value = window.localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; } catch { return fallback; } }
 
-// 中文说明：函数「EmployeeWorkbench」负责完成该界面的状态处理、交互逻辑或数据转换。
+// 函数「EmployeeWorkbench」负责完成该界面的状态处理、交互逻辑或数据转换。
 export default function EmployeeWorkbench({
   agent,
   seed: initialSeed,
@@ -75,7 +75,7 @@ export default function EmployeeWorkbench({
     ? logs
     : logs.filter((entry) => Date.parse(entry.timestamp) > logClearCutoff);
 
-  // 中文说明：函数「submit」负责完成该界面的状态处理、交互逻辑或数据转换。
+  // 函数「submit」负责完成该界面的状态处理、交互逻辑或数据转换。
   function submit() {
     onRun(prompt, {
       domain: seed.domain,
@@ -99,7 +99,7 @@ export default function EmployeeWorkbench({
     <div className={cn("employee-workbench", isViral && "viral-workbench")}>
       <section className="panel employee-hero">
         <div className="stage-head">
-          {/* 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。 */}
+          {/* 中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。 */}
           <div className="stage-icon"><Icon size={20} /></div>
         </div>
         <div className="employee-hero-copy">

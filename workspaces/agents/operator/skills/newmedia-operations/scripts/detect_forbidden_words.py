@@ -53,7 +53,7 @@ REPLACEMENT_SUGGESTIONS = {
 }
 
 
-# 中文说明：函数「detect_forbidden_words」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「detect_forbidden_words」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def detect_forbidden_words(text: str, platform: str = "common") -> dict:
     """
     检测文本中的违禁词
@@ -89,7 +89,7 @@ def detect_forbidden_words(text: str, platform: str = "common") -> dict:
                 })
                 # 标记违规词
                 marked_text = marked_text.replace(word, f"【⚠️{word}⚠️】")
-    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
+    # 这里汇总前半段结果，继续执行后续校验、转换或输出。
 
     # 判断风险等级
     high_risk_categories = {"医疗功效", "疾病名称", "平台引流", "最高级"}
@@ -111,7 +111,7 @@ def detect_forbidden_words(text: str, platform: str = "common") -> dict:
     }
 
 
-# 中文说明：函数「format_report」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「format_report」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def format_report(result: dict, platform: str) -> str:
     """格式化检测报告"""
     lines = [
@@ -138,7 +138,7 @@ def format_report(result: dict, platform: str) -> str:
     return "\n".join(lines)
 
 
-# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     parser = argparse.ArgumentParser(description="新媒体违禁词检测工具")
     parser.add_argument("--text", type=str, help="待检测文本")

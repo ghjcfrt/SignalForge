@@ -6,7 +6,7 @@ from typing import List, Dict
 from collections import defaultdict
 
 class DemandPrioritizer:
-    # 中文说明：函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def __init__(self):
         self.priority_levels = {
             'P0': {'min_frequency': 15, 'description': '紧急重要'},
@@ -15,7 +15,7 @@ class DemandPrioritizer:
             'P3': {'min_frequency': 0, 'description': '不紧急不重要'}
         }
     
-    # 中文说明：函数「group_similar_demands」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「group_similar_demands」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def group_similar_demands(self, demands: List[Dict]) -> List[Dict]:
         grouped = defaultdict(list)
         
@@ -39,7 +39,7 @@ class DemandPrioritizer:
         
         return result
     
-    # 中文说明：函数「calculate_priority」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「calculate_priority」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def calculate_priority(self, demand_group: Dict) -> str:
         frequency = demand_group['frequency']
         negative_ratio = demand_group['negative_count'] / demand_group['frequency']
@@ -58,7 +58,7 @@ class DemandPrioritizer:
         
         return 'P3'
     
-    # 中文说明：函数「calculate_score」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「calculate_score」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def calculate_score(self, demand_group: Dict) -> float:
         frequency = demand_group['frequency']
         negative_ratio = demand_group['negative_count'] / demand_group['frequency']
@@ -67,7 +67,7 @@ class DemandPrioritizer:
         score = frequency * 10 + negative_ratio * 50 + avg_likes * 0.1
         return score
     
-    # 中文说明：函数「prioritize_demands」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「prioritize_demands」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def prioritize_demands(self, demands: List[Dict]) -> List[Dict]:
         grouped = self.group_similar_demands(demands)
         
@@ -84,7 +84,7 @@ class DemandPrioritizer:
         
         return sorted_demands
     
-    # 中文说明：函数「generate_priority_summary」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「generate_priority_summary」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def generate_priority_summary(self, prioritized_demands: List[Dict]) -> Dict:
         summary = defaultdict(list)
         
@@ -105,7 +105,7 @@ class DemandPrioritizer:
             }
         }
     
-    # 中文说明：函数「save_to_json」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「save_to_json」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def save_to_json(self, prioritized_demands: List[Dict], summary: Dict, output_path: str):
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump({
@@ -120,7 +120,7 @@ class DemandPrioritizer:
         print(f"   P2级需求: {summary['priority_distribution']['P2']} 个")
         print(f"   P3级需求: {summary['priority_distribution']['P3']} 个")
 
-# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     parser = argparse.ArgumentParser(description='需求分级与优先级排序')
     parser.add_argument('--input', type=str, required=True, help='输入文件路径')

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Dict, Tuple
 
 class DemandTypeClassifier:
-    # 中文说明：函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def __init__(self):
         self.physical_keywords = [
             '产品', '商品', '购买', '价格', '质量', '功能', '材质', '包装',
@@ -19,7 +19,7 @@ class DemandTypeClassifier:
             '课程', '内容', '社区', '工具', '应用'
         ]
     
-    # 中文说明：函数「classify」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「classify」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def classify(self, keyword: str, description: str = "") -> Tuple[str, float]:
         text = f"{keyword} {description}".lower()
         
@@ -37,7 +37,7 @@ class DemandTypeClassifier:
                 return 'service', 0.6
 
 class PlatformSelector:
-    # 中文说明：函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def __init__(self):
         self.physical_platforms = {
             'xiaohongshu': {'priority': 1, 'min_count': 600, 'max_count': 800, 'weight': 0.35},
@@ -56,7 +56,7 @@ class PlatformSelector:
             'zhihu': {'priority': 5, 'min_count': 100, 'max_count': 200, 'weight': 0.05}
         }
     
-    # 中文说明：函数「select_platforms」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「select_platforms」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def select_platforms(self, demand_type: str, target_count: int = 2000) -> Dict[str, int]:
         platforms = self.physical_platforms if demand_type == 'physical' else self.service_platforms
         
@@ -86,7 +86,7 @@ class PlatformSelector:
         
         return allocation
     
-    # 中文说明：函数「get_platform_info」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「get_platform_info」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def get_platform_info(self, demand_type: str) -> Dict:
         platforms = self.physical_platforms if demand_type == 'physical' else self.service_platforms
         
@@ -96,7 +96,7 @@ class PlatformSelector:
             'total_weight': sum(p['weight'] for p in platforms.values())
         }
 
-# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     parser = argparse.ArgumentParser(description='需求类型判断与平台选择')
     parser.add_argument('--keyword', type=str, required=True, help='需求关键词')

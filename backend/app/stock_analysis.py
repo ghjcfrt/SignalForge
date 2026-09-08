@@ -17,7 +17,7 @@ STOCK_ANALYSIS_PROMPT = STOCK_SKILL_DIR / "references" / "analysis-prompt-templa
 STOCK_OUTPUT_TEMPLATE = STOCK_SKILL_DIR / "references" / "output-format-template.md"
 STOCK_ANALYSIS_CACHE: dict[tuple[str, int, bool], tuple[float, StockAnalysisResult]] = {}
 
-# 中文说明：异步函数「analyze_stocks」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「analyze_stocks」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def analyze_stocks(request: StockAnalysisRequest, settings: Settings) -> StockAnalysisResult:
     """Run the installed Stock Analysis Skill for finance/stock requests."""
     cache_key = (request.stocks.strip().upper(), request.days, request.include_news)
@@ -96,7 +96,7 @@ async def analyze_stocks(request: StockAnalysisRequest, settings: Settings) -> S
         STOCK_ANALYSIS_CACHE[cache_key] = (time.monotonic(), final.model_copy(deep=True))
     return final
 
-# 中文说明：函数「stock_sources_health」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「stock_sources_health」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def stock_sources_health(settings: Settings) -> dict[str, object]:
     libraries = {name: bool(importlib.util.find_spec(name)) for name in ("tushare", "efinance", "akshare", "yfinance")}
     return {

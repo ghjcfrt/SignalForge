@@ -14,7 +14,7 @@ from urllib.request import Request, urlopen
 BASE_URL = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8017").rstrip("/")
 
 
-# 中文说明：函数「request」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「request」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def request(path: str, method: str = "GET", payload: object | None = None) -> tuple[int, object]:
     data = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = {"Content-Type": "application/json"} if data else {}
@@ -29,7 +29,7 @@ def request(path: str, method: str = "GET", payload: object | None = None) -> tu
         raise AssertionError(f"无法连接后端 {BASE_URL}: {exc.reason}") from exc
 
 
-# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main() -> None:
     status, health = request("/api/health")
     assert status == 200 and health.get("status") == "ok", health

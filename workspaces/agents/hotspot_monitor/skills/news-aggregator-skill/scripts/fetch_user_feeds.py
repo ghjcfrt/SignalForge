@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from rss_parser import fetch_rss_feed
 
 
-# 中文说明：函数「find_opml_file」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「find_opml_file」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def find_opml_file():
     """按优先级查找 OPML 文件，返回第一个存在的路径或 None。"""
     candidates = [
@@ -36,7 +36,7 @@ def find_opml_file():
     return None
 
 
-# 中文说明：函数「parse_opml」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「parse_opml」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def parse_opml(path):
     """解析 OPML，返回 [(name, xml_url), ...] 列表。"""
     tree = ET.parse(path)
@@ -51,7 +51,7 @@ def parse_opml(path):
     return feeds
 
 
-# 中文说明：函数「fetch_all_feeds」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「fetch_all_feeds」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_all_feeds(feeds, limit_per_feed=3):
     """并发抓取所有 feed，返回合并后的 items 列表。"""
     all_items = []
@@ -73,7 +73,7 @@ def fetch_all_feeds(feeds, limit_per_feed=3):
     return all_items
 
 
-# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     parser = argparse.ArgumentParser(
         description="Fetch user-defined RSS feeds from OPML and emit JSON."

@@ -2,7 +2,7 @@
 import sys
 from playwright.sync_api import sync_playwright
 
-# 中文说明：函数「inspect」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「inspect」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def inspect():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -27,7 +27,7 @@ def inspect():
             href = a.get_attribute('href')
             text = a.inner_text()
             print(f"GITHUB LINK: {text} -> {href}")
-    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
+    # 这里汇总前半段结果，继续执行后续校验、转换或输出。
             
         print("--- BUTTONS ---")
         for btn in page.query_selector_all("button"):

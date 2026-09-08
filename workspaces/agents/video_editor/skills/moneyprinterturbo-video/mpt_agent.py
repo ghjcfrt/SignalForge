@@ -66,13 +66,13 @@ class SkillError(RuntimeError):
     """An actionable Skill error that can be reported without a traceback."""
 
 
-# 中文说明：函数「log」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「log」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def log(message: str) -> None:
     """Flush concise progress so the agent knows the long-running job started."""
     print(f"[MoneyPrinterTurbo] {message}", flush=True)
 
 
-# 中文说明：函数「parse_args」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「parse_args」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Install MoneyPrinterTurbo and generate a final video from a topic."
@@ -99,7 +99,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
-# 中文说明：函数「_safe_extract」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「_safe_extract」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _safe_extract(archive: zipfile.ZipFile, destination: Path) -> None:
     """Reject ZIP entries that would escape the temporary extraction directory."""
     destination = destination.resolve()
@@ -110,7 +110,7 @@ def _safe_extract(archive: zipfile.ZipFile, destination: Path) -> None:
     archive.extractall(destination)
 
 
-# 中文说明：函数「ensure_project」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「ensure_project」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def ensure_project(root: Path) -> None:
     """Reuse an existing project or install it from the official GitHub archive."""
     root = root.expanduser().resolve()
@@ -138,7 +138,7 @@ def ensure_project(root: Path) -> None:
             # Some Windows Python builds cannot complete GitHub's TLS
             # handshake even though the system curl client can.  Retry via
             # curl before reporting an installation failure.
-    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
+    # 这里汇总前半段结果，继续执行后续校验、转换或输出。
             curl = shutil.which("curl.exe") or shutil.which("curl")
             if not curl:
                 raise SkillError(f"GitHub download failed: {exc}") from exc
@@ -168,7 +168,7 @@ def ensure_project(root: Path) -> None:
     log("project download completed")
 
 
-# 中文说明：函数「ensure_config」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「ensure_config」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def ensure_config(root: Path) -> Path:
     """Create the initial configuration without overwriting an existing file."""
     config_path = root / "config.toml"
@@ -178,7 +178,7 @@ def ensure_config(root: Path) -> Path:
     return config_path
 
 
-# 中文说明：函数「_plain_config_value」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「_plain_config_value」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _plain_config_value(text: str, key: str) -> str:
     """Read a simple top-level TOML value without printing its contents."""
     match = re.search(rf"(?m)^{re.escape(key)}\s*=\s*(.*)$", text)
@@ -190,7 +190,7 @@ def _plain_config_value(text: str, key: str) -> str:
     return value
 
 
-# 中文说明：函数「_replace_config_value」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「_replace_config_value」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _replace_config_value(text: str, key: str, value: object) -> str:
     """Replace one active field while preserving the configuration layout."""
     pattern = re.compile(rf"(?m)^({re.escape(key)}\s*=\s*).*$")
@@ -200,7 +200,7 @@ def _replace_config_value(text: str, key: str, value: object) -> str:
     return pattern.sub(lambda match: f"{match.group(1)}{encoded}", text, count=1)
 
 
-# 中文说明：函数「_has_configured_value」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「_has_configured_value」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _has_configured_value(value: str) -> bool:
     """Treat empty strings and whitespace-only key arrays as unconfigured."""
     if not value:
@@ -214,7 +214,7 @@ def _has_configured_value(value: str) -> bool:
     return bool(str(parsed).strip())
 
 
-# 中文说明：函数「_parse_string_list」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「_parse_string_list」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _parse_string_list(value: str) -> list[str]:
     """Parse a configured string list while removing blanks and duplicates."""
     try:
@@ -226,7 +226,7 @@ def _parse_string_list(value: str) -> list[str]:
     return list(dict.fromkeys(str(item).strip() for item in parsed if str(item).strip()))
 
 
-# 中文说明：函数「apply_environment_config」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「apply_environment_config」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def apply_environment_config(config_path: Path) -> None:
     """Write supplied credentials while logging field names only."""
     provider = os.environ.get("MPT_LLM_PROVIDER", "").strip().lower()
@@ -262,7 +262,7 @@ def apply_environment_config(config_path: Path) -> None:
     log("updated configuration fields: " + ", ".join(changes))
 
 
-# 中文说明：函数「_provider_is_ready」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「_provider_is_ready」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _provider_is_ready(text: str, provider: str) -> bool:
     """Return whether a provider has enough configuration to generate."""
     if provider in KEYLESS_LLM_PROVIDERS:
@@ -279,7 +279,7 @@ def _provider_is_ready(text: str, provider: str) -> bool:
     return True
 
 
-# 中文说明：函数「reuse_existing_llm_provider」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「reuse_existing_llm_provider」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def reuse_existing_llm_provider(config_path: Path) -> str:
     """
     Reuse existing LLM credentials before asking the user for another key.
@@ -306,7 +306,7 @@ def reuse_existing_llm_provider(config_path: Path) -> str:
     return current_provider
 
 
-# 中文说明：函数「selected_video_source」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「selected_video_source」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def selected_video_source(cli_args: list[str]) -> str:
     """Read the effective material source from forwarded CLI arguments."""
     for index, item in enumerate(cli_args):
@@ -317,13 +317,13 @@ def selected_video_source(cli_args: list[str]) -> str:
     return "pexels"
 
 
-# 中文说明：函数「has_cli_option」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「has_cli_option」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def has_cli_option(cli_args: list[str], option: str) -> bool:
     """Return whether forwarded arguments explicitly set a CLI option."""
     return any(item == option or item.startswith(f"{option}=") for item in cli_args)
 
 
-# 中文说明：函数「missing_config」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「missing_config」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def missing_config(config_path: Path, cli_args: list[str]) -> tuple[str, list[str]]:
     """Return the active provider and only the fields required by this run."""
     text = config_path.read_text(encoding="utf-8")
@@ -349,7 +349,7 @@ def missing_config(config_path: Path, cli_args: list[str]) -> tuple[str, list[st
     return provider, missing
 
 
-# 中文说明：函数「report_missing_config」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「report_missing_config」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def report_missing_config(provider: str, missing: list[str]) -> int:
     """Tell the agent exactly which credentials must be requested."""
     print("MPT_NEEDS_INPUT")
@@ -377,7 +377,7 @@ def report_missing_config(provider: str, missing: list[str]) -> int:
     return NEEDS_INPUT_EXIT_CODE
 
 
-# 中文说明：函数「report_invalid_pexels_config」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「report_invalid_pexels_config」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def report_invalid_pexels_config() -> int:
     """Request only a new Pexels key when every configured key is rejected."""
     print("MPT_NEEDS_INPUT")
@@ -388,7 +388,7 @@ def report_invalid_pexels_config() -> int:
     return NEEDS_INPUT_EXIT_CODE
 
 
-# 中文说明：函数「_validate_pexels_key」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「_validate_pexels_key」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _validate_pexels_key(api_key: str) -> str:
     """
     Return ``valid``, ``rejected``, or ``unknown`` for a Pexels key.
@@ -417,7 +417,7 @@ def _validate_pexels_key(api_key: str) -> str:
         return "unknown"
 
 
-# 中文说明：函数「validate_pexels_config」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「validate_pexels_config」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def validate_pexels_config(config_path: Path, cli_args: list[str]) -> bool:
     """
     Validate all Pexels keys used by the default material source.
@@ -446,7 +446,7 @@ def validate_pexels_config(config_path: Path, cli_args: list[str]) -> bool:
             rejected_count += 1
         else:
             unknown_count += 1
-    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
+    # 这里汇总前半段结果，继续执行后续校验、转换或输出。
 
     if valid_keys:
         if valid_keys != keys:
@@ -466,12 +466,12 @@ def validate_pexels_config(config_path: Path, cli_args: list[str]) -> bool:
     return False
 
 
-# 中文说明：函数「result_manifest_path」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「result_manifest_path」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def result_manifest_path(root: Path) -> Path:
     return root / ".agent-logs" / "moneyprinterturbo-video" / "latest-result.json"
 
 
-# 中文说明：函数「write_result_manifest」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「write_result_manifest」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def write_result_manifest(root: Path, payload: dict[str, object]) -> Path:
     """
     Atomically write the stable result file for agents that cannot wait.
@@ -496,7 +496,7 @@ def write_result_manifest(root: Path, payload: dict[str, object]) -> Path:
     return result_path.resolve()
 
 
-# 中文说明：函数「run_checked」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「run_checked」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def run_checked(command: list[str], *, cwd: Path) -> None:
     """Run dependency sync quietly and show only the last 30 lines on failure."""
     log("installing or verifying project dependencies with uv")
@@ -516,7 +516,7 @@ def run_checked(command: list[str], *, cwd: Path) -> None:
         raise SkillError(f"dependency installation failed with exit code {result.returncode}")
 
 
-# 中文说明：函数「generate_video」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「generate_video」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def generate_video(
     root: Path,
     subject: str,
@@ -580,7 +580,7 @@ def generate_video(
             text=True,
             check=False,
         )
-    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
+    # 这里汇总前半段结果，继续执行后续校验、转换或输出。
     if result.returncode != 0:
         tail = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-30:]
         if tail:
@@ -646,7 +646,7 @@ def generate_video(
     return videos, task_dir.resolve(), log_path.resolve(), result_path
 
 
-# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     root = args.root.expanduser().resolve()

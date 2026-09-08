@@ -14,17 +14,17 @@ from backend.app.schemas import TopicSeed, ViralAnalysisConfig
 
 
 class _Completion:
-    # 中文说明：函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def __init__(self, content: str):
         self.content = content
 
 
 class _Gateway:
-    # 中文说明：函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def __init__(self, _settings):
         pass
 
-    # 中文说明：异步函数「complete」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 异步函数「complete」负责完成该步骤的输入处理、核心逻辑和结果返回。
     async def complete(self, system: str, user: str, fallback: str):
         if "热点监控员" in system:
             return _Completion(
@@ -60,7 +60,7 @@ class _Gateway:
         return _Completion(fallback)
 
 
-# 中文说明：异步函数「_fixture_news」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「_fixture_news」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def _fixture_news(_timeout=None):
     now = int(time.time())
     return [
@@ -69,7 +69,7 @@ async def _fixture_news(_timeout=None):
     ]
 
 
-# 中文说明：异步函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def main() -> None:
     original_gateway = workflows.LlmGateway
     original_news = workflows._run_news_aggregator

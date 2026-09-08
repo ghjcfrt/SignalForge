@@ -48,7 +48,7 @@ class MoneyPrinterTurboRunResult(BaseModel):
     result_file: str | None = None
 
 
-# 中文说明：函数「mpt_status」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「mpt_status」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def mpt_status(settings: Settings) -> MoneyPrinterTurboStatus:
     missing_env: list[str] = []
     provider = "oneapi"
@@ -75,7 +75,7 @@ def mpt_status(settings: Settings) -> MoneyPrinterTurboStatus:
     )
 
 
-# 中文说明：函数「_mpt_env」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「_mpt_env」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _mpt_env(settings: Settings) -> dict[str, str]:
     env = os.environ.copy()
     env["MPT_LLM_PROVIDER"] = "oneapi"
@@ -89,7 +89,7 @@ def _mpt_env(settings: Settings) -> dict[str, str]:
     return env
 
 
-# 中文说明：函数「_parse_mpt_output」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「_parse_mpt_output」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _parse_mpt_output(stdout: str) -> dict[str, str | list[str]]:
     values: dict[str, str | list[str]] = {"video_files": []}
     for line in stdout.splitlines():
@@ -106,7 +106,7 @@ def _parse_mpt_output(stdout: str) -> dict[str, str | list[str]]:
     return values
 
 
-# 中文说明：异步函数「run_moneyprinterturbo」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「run_moneyprinterturbo」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def run_moneyprinterturbo(
     request: MoneyPrinterTurboRequest,
     settings: Settings,
@@ -146,8 +146,8 @@ async def run_moneyprinterturbo(
         # Video rendering is intentionally unbounded by default.  It may
         # involve dependency installation, downloads, TTS and encoding, all
         # of which can legitimately exceed a fixed request timeout.  Keep an
-    # 中文说明：上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-    # 中文说明：上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
+    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
+    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
         # explicit timeout available for callers that need a hard cap.
         # Do not use asyncio.create_subprocess_exec here: uvicorn may run
         # under Windows' SelectorEventLoop (notably with --reload), whose

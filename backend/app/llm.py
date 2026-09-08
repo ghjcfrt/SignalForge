@@ -19,7 +19,7 @@ class LlmGateway:
 
     MODEL_CHECK_RETRIES = 3
 
-    # 中文说明：函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self._client: AsyncOpenAI | None = None
@@ -29,7 +29,7 @@ class LlmGateway:
                 base_url=settings.ai_base_url,
             )
 
-    # 中文说明：函数「_failure_detail」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「_failure_detail」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def _failure_detail(self, exc: Exception) -> str:
         """Return provider context instead of hiding the real fallback cause."""
         detail = str(exc).strip() or type(exc).__name__
@@ -42,7 +42,7 @@ class LlmGateway:
             f"error_type={type(exc).__name__}; detail={detail}"
         )
 
-    # 中文说明：函数「_is_retryable_network_error」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「_is_retryable_network_error」负责完成该步骤的输入处理、核心逻辑和结果返回。
     @staticmethod
     def _is_retryable_network_error(exc: Exception) -> bool:
         name = type(exc).__name__.casefold()
@@ -53,7 +53,7 @@ class LlmGateway:
             return True
         return getattr(exc, "status_code", None) in {408, 429, 500, 502, 503, 504}
 
-    # 中文说明：异步函数「complete」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 异步函数「complete」负责完成该步骤的输入处理、核心逻辑和结果返回。
     async def complete(
         self,
         *,
@@ -77,8 +77,8 @@ class LlmGateway:
                     {"role": "user", "content": user},
                 ],
                 "temperature": temperature,
-        # 中文说明：上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-        # 中文说明：上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
+        # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
+        # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
             }
             response = await self._client.chat.completions.create(**request)
         except Exception as exc:
@@ -102,7 +102,7 @@ class LlmGateway:
         content = response.choices[0].message.content or fallback
         return ChatResult(content=content.strip(), live=True)
 
-    # 中文说明：异步函数「check_model」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 异步函数「check_model」负责完成该步骤的输入处理、核心逻辑和结果返回。
     async def check_model(self) -> tuple[bool, str | None]:
         """Verify that the configured model is actually routable before UI claims live mode."""
         if not self._client:

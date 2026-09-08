@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Dict
 
 class ReportGenerator:
-    # 中文说明：函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def __init__(self):
         self.template = """# {title}
 
@@ -56,7 +56,7 @@ class ReportGenerator:
 {platform_characteristics}
 
 ## 4. 需求提取结果
-        # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
+        # 这里汇总前半段结果，继续执行后续校验、转换或输出。
 
 ### 4.1 需求分类统计
 {demand_type_stats}
@@ -106,7 +106,7 @@ class ReportGenerator:
 - 生成时间：{generation_time}
 """
     
-    # 中文说明：函数「generate_report」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「generate_report」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def generate_report(self, data: Dict, title: str = "用户需求调研报告") -> str:
         summary = data.get('summary', {})
         prioritized_demands = data.get('prioritized_demands', [])
@@ -138,7 +138,7 @@ class ReportGenerator:
         report = self.template.format(
             title=title,
             fetch_time=data.get('prioritize_time', datetime.now().isoformat()),
-        # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
+        # 这里汇总前半段结果，继续执行后续校验、转换或输出。
             data_sources=data_sources,
             total_data_count=total_data_count,
             total_demands=total_demands,
@@ -171,7 +171,7 @@ class ReportGenerator:
         
         return report
     
-    # 中文说明：函数「_generate_core_findings」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「_generate_core_findings」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def _generate_core_findings(self, demands: List[Dict]) -> str:
         if not demands:
             return "暂无核心发现"
@@ -182,7 +182,7 @@ class ReportGenerator:
         
         return "\n".join(findings)
     
-    # 中文说明：函数「_generate_key_demands」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「_generate_key_demands」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def _generate_key_demands(self, demands: List[Dict]) -> str:
         if not demands:
             return "暂无关键需求"
@@ -193,29 +193,29 @@ class ReportGenerator:
         
         return "\n".join(key_demands)
     
-    # 中文说明：函数「_generate_data_sources」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「_generate_data_sources」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def _generate_data_sources(self, data: Dict) -> str:
         return "小红书、抖音、微博、电商平台"
     
-    # 中文说明：函数「_generate_data_sources_list」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「_generate_data_sources_list」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def _generate_data_sources_list(self, data: Dict) -> str:
         return """- 小红书：用户评论和笔记内容
 - 抖音：视频评论和用户互动
 - 微博：话题讨论和用户观点
 - 电商平台：商品评价和差评"""
     
-    # 中文说明：函数「_generate_sentiment_analysis」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「_generate_sentiment_analysis」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def _generate_sentiment_analysis(self, data: Dict) -> str:
         return "基于关键词匹配和情感词典分析"
     
-    # 中文说明：函数「_generate_platform_characteristics」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「_generate_platform_characteristics」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def _generate_platform_characteristics(self, data: Dict) -> str:
         return """- 小红书：用户更关注产品细节和使用体验
 - 抖音：用户更关注视频内容和互动体验
 - 微博：用户更关注话题讨论和社会影响
 - 电商平台：用户更关注产品质量和服务体验"""
     
-    # 中文说明：函数「_generate_demand_type_stats」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「_generate_demand_type_stats」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def _generate_demand_type_stats(self, data: Dict) -> str:
         analysis = data.get('analysis', {})
         demand_types = analysis.get('demand_types', {})
@@ -229,7 +229,7 @@ class ReportGenerator:
         
         return "\n".join(stats)
     
-    # 中文说明：函数「_generate_demand_list」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「_generate_demand_list」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def _generate_demand_list(self, demands: List[Dict]) -> str:
         if not demands:
             return "暂无需求列表"
@@ -240,7 +240,7 @@ class ReportGenerator:
         
         return "\n\n".join(demand_list)
     
-    # 中文说明：函数「_generate_priority_demands」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「_generate_priority_demands」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def _generate_priority_demands(self, demands: List[Dict]) -> str:
         if not demands:
             return "暂无该级别需求"
@@ -251,7 +251,7 @@ class ReportGenerator:
         
         return "\n\n".join(priority_demands)
     
-    # 中文说明：函数「_generate_actions」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「_generate_actions」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def _generate_actions(self, demands: List[Dict], term: str) -> str:
         if not demands:
             return f"暂无{term}行动建议"
@@ -271,14 +271,14 @@ class ReportGenerator:
         
         return "\n".join(actions)
     
-    # 中文说明：函数「save_report」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「save_report」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def save_report(self, report: str, output_path: str):
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(report)
         
         print(f"✅ 已生成需求调研报告到 {output_path}")
 
-# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     parser = argparse.ArgumentParser(description='生成需求调研报告')
     parser.add_argument('--input', type=str, required=True, help='输入文件路径')

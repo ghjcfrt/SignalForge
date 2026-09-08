@@ -5,13 +5,13 @@ from datetime import datetime
 from typing import List, Dict
 
 class DataValidator:
-    # 中文说明：函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def __init__(self):
         self.min_valid_count = 2000
         self.min_content_length = 5
         self.max_duplicate_ratio = 0.3
     
-    # 中文说明：函数「validate_count」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「validate_count」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def validate_count(self, data: List[Dict], min_count: int) -> Dict:
         total_count = len(data)
         valid = total_count >= min_count
@@ -24,7 +24,7 @@ class DataValidator:
             'message': f"数据量{'达标' if valid else '不足'}：{total_count}/{min_count}"
         }
     
-    # 中文说明：函数「validate_quality」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「validate_quality」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def validate_quality(self, data: List[Dict]) -> Dict:
         valid_items = []
         invalid_items = []
@@ -52,7 +52,7 @@ class DataValidator:
             'invalid_items': invalid_items[:10]
         }
     
-    # 中文说明：函数「check_duplicates」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「check_duplicates」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def check_duplicates(self, data: List[Dict]) -> Dict:
         contents = [item.get('cleaned_content', item.get('content', '')) for item in data]
         unique_contents = set(contents)
@@ -68,7 +68,7 @@ class DataValidator:
             'has_excessive_duplicates': duplicate_ratio > self.max_duplicate_ratio
         }
     
-    # 中文说明：函数「validate_platform_coverage」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「validate_platform_coverage」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def validate_platform_coverage(self, data: List[Dict], expected_platforms: List[str]) -> Dict:
         platform_counts = {}
         
@@ -85,7 +85,7 @@ class DataValidator:
             'coverage_ratio': len(platform_counts) / len(expected_platforms) if expected_platforms else 0
         }
     
-    # 中文说明：函数「generate_validation_report」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「generate_validation_report」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def generate_validation_report(self, data: List[Dict], min_count: int = 2000, expected_platforms: List[str] = None) -> Dict:
         count_validation = self.validate_count(data, min_count)
         quality_validation = self.validate_quality(data)
@@ -120,7 +120,7 @@ class DataValidator:
             )
         }
     
-    # 中文说明：函数「_generate_recommendations」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「_generate_recommendations」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def _generate_recommendations(self, count_val, quality_val, dup_check, platform_val) -> List[str]:
         recommendations = []
         
@@ -141,7 +141,7 @@ class DataValidator:
         
         return recommendations
     
-    # 中文说明：函数「save_report」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「save_report」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def save_report(self, report: Dict, output_path: str):
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(report, f, ensure_ascii=False, indent=2)
@@ -163,7 +163,7 @@ class DataValidator:
         
         print(f"\n💾 报告已保存到 {output_path}")
 
-# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     parser = argparse.ArgumentParser(description='数据质量验证')
     parser.add_argument('--input', type=str, required=True, help='输入文件路径')

@@ -15,7 +15,7 @@ import httpx
 from backend.app.config import ROOT_DIR
 
 
-# 中文说明：新闻来源模块负责 Skill、RSS 回退和本地 fixture 的读取。
+# 新闻来源模块负责 Skill、RSS 回退和本地 fixture 的读取。
 # 通过参数注入配置与日期解析器，避免与工作流编排模块形成循环依赖。
 DEFAULT_RSS_FEEDS = (
     ("BBC", "https://feeds.bbci.co.uk/news/rss.xml"),
@@ -129,14 +129,14 @@ async def run_builtin_news_aggregator(
     """Keep the radar usable when the optional news skill is not installed."""
     timeout = None if timeout_seconds <= 0 else timeout_seconds
 
-    # 中文说明：异步函数「fetch_feed」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 异步函数「fetch_feed」负责完成该步骤的输入处理、核心逻辑和结果返回。
     async def fetch_feed(client: httpx.AsyncClient, name: str, url: str) -> list[dict]:
         response = await client.get(url)
         response.raise_for_status()
         root = ElementTree.fromstring(response.content)
         items: list[dict] = []
         for item in root.findall(".//item")[:fetch_limit]:
-            # 中文说明：函数「text」负责完成该步骤的输入处理、核心逻辑和结果返回。
+            # 函数「text」负责完成该步骤的输入处理、核心逻辑和结果返回。
             def text(tag: str) -> str:
                 return (item.findtext(tag) or "").strip()
             published = parse_datetime(text("pubDate"))

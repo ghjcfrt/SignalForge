@@ -78,20 +78,20 @@ app.add_middleware(
 )
 
 
-# 中文说明：异步函数「startup」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「startup」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.on_event("startup")
 async def startup() -> None:
     ensure_agent_workspaces()
     _load_persisted_runs()
 
 
-# 中文说明：异步函数「health」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「health」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": "热讯工坊"}
 
 
-# 中文说明：异步函数「api_status」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「api_status」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.get("/api/status", response_model=ApiStatus)
 async def api_status() -> ApiStatus:
     settings = get_settings()
@@ -115,31 +115,31 @@ async def api_status() -> ApiStatus:
     )
 
 
-# 中文说明：异步函数「timeout_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「timeout_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.get("/api/settings/timeouts", response_model=TimeoutSettings)
 async def timeout_settings() -> TimeoutSettings:
     return get_timeout_settings()
 
 
-# 中文说明：异步函数「timeout_settings_update」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「timeout_settings_update」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.put("/api/settings/timeouts", response_model=TimeoutSettings)
 async def timeout_settings_update(payload: TimeoutSettings) -> TimeoutSettings:
     return update_timeout_settings(payload)
 
 
-# 中文说明：异步函数「output_directories」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「output_directories」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.get("/api/settings/output-directories", response_model=OutputDirectorySettings)
 async def output_directories() -> OutputDirectorySettings:
     return get_output_directory_settings()
 
 
-# 中文说明：异步函数「output_directories_update」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「output_directories_update」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.put("/api/settings/output-directories", response_model=OutputDirectorySettings)
 async def output_directories_update(payload: OutputDirectorySettings) -> OutputDirectorySettings:
     return update_output_directory_settings(payload)
 
 
-# 中文说明：异步函数「select_directory」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「select_directory」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.get("/api/local/select-directory")
 async def select_directory() -> dict[str, str | None]:
     """Open the native directory chooser on the machine running the API."""
@@ -147,14 +147,14 @@ async def select_directory() -> dict[str, str | None]:
     return {"path": path}
 
 
-# 中文说明：异步函数「open_artifacts_folder」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「open_artifacts_folder」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.get("/api/local/open-artifacts")
 async def open_artifacts_folder() -> dict[str, str]:
     """Open the parent folder containing every workflow run's artifacts."""
     target = (WORKSPACE_DIR / "runs").resolve()
     target.mkdir(parents=True, exist_ok=True)
 
-    # 中文说明：函数「launch」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「launch」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def launch() -> None:
         if os.name == "nt":
             os.startfile(str(target))  # type: ignore[attr-defined]
@@ -170,25 +170,25 @@ async def open_artifacts_folder() -> dict[str, str]:
     return {"path": str(target)}
 
 
-# 中文说明：异步函数「env_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「env_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.get("/api/settings/env", response_model=EnvSettings)
 async def env_settings() -> EnvSettings:
     return get_env_settings()
 
 
-# 中文说明：异步函数「env_settings_update」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「env_settings_update」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.put("/api/settings/env", response_model=EnvSettings)
 async def env_settings_update(payload: EnvSettingsUpdate) -> EnvSettings:
     return update_env_settings(payload)
 
 
-# 中文说明：异步函数「agents」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「agents」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.get("/api/agents", response_model=list[Agent])
 async def agents() -> list[Agent]:
     return AGENTS
 
 
-# 中文说明：异步函数「topics」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「topics」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.post("/api/topics/scout", response_model=list[Topic])
 async def topics(seed: TopicSeed) -> list[Topic]:
     try:
@@ -205,7 +205,7 @@ async def topics(seed: TopicSeed) -> list[Topic]:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-# 中文说明：异步函数「run_single_agent」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「run_single_agent」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.post("/api/agents/{agent_id}/run", response_model=AgentOutput)
 async def run_single_agent(agent_id: str, request: RunAgentRequest) -> AgentOutput:
     _write_agent_log(agent_id, None, "info", "独立任务已开始")
@@ -245,7 +245,7 @@ async def run_single_agent(agent_id: str, request: RunAgentRequest) -> AgentOutp
         raise HTTPException(status_code=502, detail=f"{agent_id} 执行失败：{exc}") from exc
 
 
-# 中文说明：函数「_agent_log_path」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「_agent_log_path」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _agent_log_path(agent_id: str) -> Path:
     """Return the canonical agent log path and migrate the previous JSONL filename."""
     log_dir = WORKSPACE_DIR / "agent-logs" / agent_id
@@ -262,7 +262,7 @@ def _agent_log_path(agent_id: str) -> Path:
     return path
 
 
-# 中文说明：函数「_write_agent_log」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「_write_agent_log」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _write_agent_log(agent_id: str, artifact_path: str | None, level: str, message: str) -> None:
     """Persist a per-employee log without mixing it into the console workflow log."""
     path = _agent_log_path(agent_id)
@@ -271,7 +271,7 @@ def _write_agent_log(agent_id: str, artifact_path: str | None, level: str, messa
         handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-# 中文说明：异步函数「agent_logs」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「agent_logs」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.get("/api/agents/{agent_id}/logs")
 async def agent_logs(agent_id: str) -> list[dict[str, object]]:
     if agent_id not in {agent.id for agent in AGENTS}:
@@ -288,19 +288,19 @@ async def agent_logs(agent_id: str) -> list[dict[str, object]]:
     return entries
 
 
-# 中文说明：异步函数「stocks」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「stocks」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.post("/api/stocks/analyze", response_model=StockAnalysisResult)
 async def stocks(request: StockAnalysisRequest) -> StockAnalysisResult:
     return await analyze_stocks(request, get_settings())
 
 
-# 中文说明：异步函数「stocks_health」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「stocks_health」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.get("/api/stocks/health")
 async def stocks_health() -> dict[str, object]:
     return stock_sources_health(get_settings())
 
 
-# 中文说明：异步函数「workflow」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「workflow」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.post("/api/workflows/hot-video", response_model=WorkflowRun)
 async def workflow(request: RunWorkflowRequest) -> WorkflowRun:
     run = create_workflow(request.seed, request.viral_analysis)
@@ -313,7 +313,7 @@ async def workflow(request: RunWorkflowRequest) -> WorkflowRun:
     return run
 
 
-# 中文说明：异步函数「_execute_workflow」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「_execute_workflow」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def _execute_workflow(run: WorkflowRun, *, stop_after_stage: str | None = None) -> None:
     runner: asyncio.Task | None = None
     try:
@@ -348,8 +348,8 @@ async def _execute_workflow(run: WorkflowRun, *, stop_after_stage: str | None = 
                     # If the editor started as the deadline elapsed, hand it
                     # an unlimited window; otherwise enforce the workflow
                     # timeout and retain the normal resumable checkpoint.
-    # 中文说明：上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-    # 中文说明：上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
+    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
+    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
                     if run.current_stage == "video_editor":
                         await runner
                         break
@@ -385,13 +385,13 @@ async def _execute_workflow(run: WorkflowRun, *, stop_after_stage: str | None = 
         WORKFLOW_TASKS.pop(run.id, None)
 
 
-# 中文说明：异步函数「workflows」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「workflows」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.get("/api/workflows", response_model=list[WorkflowRun])
 async def workflows() -> list[WorkflowRun]:
     return list_runs()
 
 
-# 中文说明：异步函数「workflow_detail」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「workflow_detail」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.get("/api/workflows/{run_id}", response_model=WorkflowRun)
 async def workflow_detail(run_id: str) -> WorkflowRun:
     run = get_run(run_id)
@@ -400,7 +400,7 @@ async def workflow_detail(run_id: str) -> WorkflowRun:
     return run
 
 
-# 中文说明：异步函数「workflow_resume」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「workflow_resume」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.post("/api/workflows/{run_id}/resume", response_model=WorkflowRun)
 async def workflow_resume(run_id: str) -> WorkflowRun:
     run = get_run(run_id)
@@ -417,7 +417,7 @@ async def workflow_resume(run_id: str) -> WorkflowRun:
     return run
 
 
-# 中文说明：异步函数「artifact_preview」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「artifact_preview」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.get("/api/artifacts/preview")
 async def artifact_preview(path: str) -> FileResponse:
     """Serve a generated local image for the in-app artifact preview."""
@@ -432,7 +432,7 @@ async def artifact_preview(path: str) -> FileResponse:
     return FileResponse(target)
 
 
-# 中文说明：异步函数「workflow_step」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「workflow_step」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.post("/api/workflows/{run_id}/step", response_model=WorkflowRun)
 async def workflow_step(run_id: str, request: StepWorkflowRequest | None = None) -> WorkflowRun:
     run = get_run(run_id)
@@ -463,7 +463,7 @@ async def workflow_step(run_id: str, request: StepWorkflowRequest | None = None)
     return run
 
 
-# 中文说明：异步函数「workflow_cancel」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「workflow_cancel」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.post("/api/workflows/{run_id}/cancel", response_model=WorkflowRun)
 async def workflow_cancel(run_id: str) -> WorkflowRun:
     run = get_run(run_id)
@@ -480,7 +480,7 @@ async def workflow_cancel(run_id: str) -> WorkflowRun:
     return run
 
 
-# 中文说明：异步函数「workflow_export」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「workflow_export」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.get("/api/workflows/{run_id}/export")
 async def workflow_export(run_id: str) -> dict:
     run = get_run(run_id)
@@ -489,7 +489,7 @@ async def workflow_export(run_id: str) -> dict:
     return {"format": "signalforge-project", "version": 1, "project": run.model_dump(mode="json")}
 
 
-# 中文说明：异步函数「workflow_import」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「workflow_import」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.post("/api/workflows/import", response_model=WorkflowRun)
 async def workflow_import(file: UploadFile = File(...)) -> WorkflowRun:
     try:
@@ -510,13 +510,13 @@ async def workflow_import(file: UploadFile = File(...)) -> WorkflowRun:
     return run
 
 
-# 中文说明：异步函数「moneyprinterturbo_status」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「moneyprinterturbo_status」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.get("/api/video/moneyprinterturbo/status", response_model=MoneyPrinterTurboStatus)
 async def moneyprinterturbo_status() -> MoneyPrinterTurboStatus:
     return mpt_status(get_settings())
 
 
-# 中文说明：异步函数「moneyprinterturbo_run」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「moneyprinterturbo_run」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @app.post("/api/video/moneyprinterturbo/run", response_model=MoneyPrinterTurboRunResult)
 async def moneyprinterturbo_run(request: MoneyPrinterTurboRequest) -> MoneyPrinterTurboRunResult:
     if not request.output_dir:

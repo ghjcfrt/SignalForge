@@ -6,7 +6,7 @@ from typing import List, Dict
 from collections import Counter, defaultdict
 
 class DemandExtractor:
-    # 中文说明：函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def __init__(self):
         self.demand_keywords = {
             '功能需求': ['功能', '增加', '缺少', '需要', '希望', '应该', '添加', '支持'],
@@ -15,7 +15,7 @@ class DemandExtractor:
             '内容需求': ['内容', '质量', '数量', '详细', '介绍', '说明', '透明']
         }
     
-    # 中文说明：函数「extract_demand_type」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「extract_demand_type」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def extract_demand_type(self, text: str) -> str:
         scores = {}
         for demand_type, keywords in self.demand_keywords.items():
@@ -32,7 +32,7 @@ class DemandExtractor:
         
         return '其他'
     
-    # 中文说明：函数「extract_pain_points」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「extract_pain_points」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def extract_pain_points(self, text: str) -> List[str]:
         pain_points = []
         negative_words = ['差', '慢', '不好', '问题', '困难', '麻烦', '复杂', '失败']
@@ -43,7 +43,7 @@ class DemandExtractor:
         
         return pain_points
     
-    # 中文说明：函数「extract_demands」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「extract_demands」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def extract_demands(self, data: List[Dict]) -> List[Dict]:
         demands = []
         
@@ -68,7 +68,7 @@ class DemandExtractor:
         
         return demands
     
-    # 中文说明：函数「analyze_demands」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「analyze_demands」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def analyze_demands(self, demands: List[Dict]) -> Dict:
         demand_types = Counter([d['demand_type'] for d in demands])
         pain_points = Counter()
@@ -88,7 +88,7 @@ class DemandExtractor:
             'negative_ratio': negative_count / len(demands) if demands else 0
         }
     
-    # 中文说明：函数「save_to_json」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「save_to_json」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def save_to_json(self, demands: List[Dict], analysis: Dict, output_path: str):
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump({
@@ -101,7 +101,7 @@ class DemandExtractor:
         print(f"   需求类型分布: {analysis['demand_types']}")
         print(f"   痛点统计: {analysis['pain_points']}")
 
-# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     parser = argparse.ArgumentParser(description='需求提取与分析')
     parser.add_argument('--input', type=str, required=True, help='输入文件路径')

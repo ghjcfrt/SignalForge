@@ -70,7 +70,7 @@ HOOK_TEMPLATES = {
 }
 
 
-# 中文说明：函数「fill_template」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「fill_template」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fill_template(template: str, variables: dict) -> str:
     """用变量填充模板"""
     try:
@@ -79,7 +79,7 @@ def fill_template(template: str, variables: dict) -> str:
         return template
 
 
-# 中文说明：函数「generate_hooks」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「generate_hooks」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def generate_hooks(industry: str, brand: str, hook_types: list,
                    variables: dict) -> dict:
     """生成指定类型的互动钩子"""
@@ -99,7 +99,7 @@ def generate_hooks(industry: str, brand: str, hook_types: list,
     return result
 
 
-# 中文说明：函数「format_hook_library」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「format_hook_library」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def format_hook_library(industry: str, brand: str, hooks: dict) -> str:
     """格式化输出话术库"""
     lines = [
@@ -133,7 +133,7 @@ def format_hook_library(industry: str, brand: str, hooks: dict) -> str:
     return "\n".join(lines)
 
 
-# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     parser = argparse.ArgumentParser(description="互动钩子话术生成工具")
     parser.add_argument("--industry", required=True, help="行业名称")
@@ -161,7 +161,7 @@ def main():
         "product_type": args.product_type,
         "resource": args.resource,
         "option_a": args.option_a,
-    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
+    # 这里汇总前半段结果，继续执行后续校验、转换或输出。
         "option_b": args.option_b,
         "scenario": f"{args.industry}相关场景",
         "keyword": "资料",

@@ -11,7 +11,7 @@ SOCIALDATAX_NOTE_SEARCH_PATH = "/socialdatax/api/v1/xhs/note/search"
 SOCIALDATAX_VIDEO_TRANSCRIPT_PATH = "/socialdatax/api/v1/xhs/note/transcript"
 
 
-# 中文说明：函数「socialdatax_error」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「socialdatax_error」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def socialdatax_error(response: httpx.Response, payload: object) -> str:
     if isinstance(payload, dict):
         message = str(payload.get("message") or "").strip()
@@ -23,7 +23,7 @@ def socialdatax_error(response: httpx.Response, payload: object) -> str:
     return f"HTTP {response.status_code}"
 
 
-# 中文说明：函数「socialdatax_payload_failed」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「socialdatax_payload_failed」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def socialdatax_payload_failed(payload: object) -> bool:
     if not isinstance(payload, dict) or "code" not in payload:
         return False
@@ -33,7 +33,7 @@ def socialdatax_payload_failed(payload: object) -> bool:
     return payload.get("success") is not True
 
 
-# 中文说明：函数「normalize_socialdatax_notes」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「normalize_socialdatax_notes」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def normalize_socialdatax_notes(
     payload: object,
     parse_datetime: Callable[[object], object | None],
@@ -77,7 +77,7 @@ def normalize_socialdatax_notes(
     return notes
 
 
-# 中文说明：异步函数「run_socialdatax_note_search」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「run_socialdatax_note_search」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def run_socialdatax_note_search(
     keyword: str,
     settings: Settings,
@@ -109,7 +109,7 @@ async def run_socialdatax_note_search(
     return normalize_notes(payload)
 
 
-# 中文说明：异步函数「run_socialdatax_transcript」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「run_socialdatax_transcript」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def run_socialdatax_transcript(note_url: str, settings: Settings) -> str:
     """Try the paid video-to-speech step for a video sample.
 
@@ -140,7 +140,7 @@ async def run_socialdatax_transcript(note_url: str, settings: Settings) -> str:
     raise RuntimeError("视频口播提取返回为空")
 
 
-# 中文说明：异步函数「enrich_socialdatax_notes」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 异步函数「enrich_socialdatax_notes」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def enrich_socialdatax_notes(notes: list[dict], settings: Settings) -> tuple[list[dict], int, list[str]]:
     enriched: list[dict] = []
     transcript_count = 0
@@ -160,7 +160,7 @@ async def enrich_socialdatax_notes(notes: list[dict], settings: Settings) -> tup
     return enriched, transcript_count, errors
 
 
-# 中文说明：函数「socialdatax_context」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「socialdatax_context」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def socialdatax_context(notes: list[dict], *, label: str = "样本") -> str:
     if not notes:
         return "## SocialDataX 小红书样本\n\n本次没有可用的 SocialDataX 样本；不要编造点赞、收藏、评论、分享数据，只能基于选题本身给出待验证的传播假设。"

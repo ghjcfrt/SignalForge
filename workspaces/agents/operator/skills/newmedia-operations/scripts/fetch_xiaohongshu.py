@@ -6,11 +6,11 @@ from typing import List, Dict
 import re
 
 class XiaohongshuFetcher:
-    # 中文说明：函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def __init__(self):
         self.base_url = "https://www.xiaohongshu.com"
     
-    # 中文说明：函数「fetch_comments」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「fetch_comments」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def fetch_comments(self, keyword: str, limit: int = 100) -> List[Dict]:
         comments = []
         
@@ -42,7 +42,7 @@ class XiaohongshuFetcher:
                 "author": "用户C",
                 "timestamp": datetime.now().isoformat(),
                 "likes": 234,
-        # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
+        # 这里汇总前半段结果，继续执行后续校验、转换或输出。
                 "sentiment": "negative",
                 "is_negative": True
             },
@@ -75,7 +75,7 @@ class XiaohongshuFetcher:
         
         return comments
     
-    # 中文说明：函数「save_to_json」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    # 函数「save_to_json」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def save_to_json(self, comments: List[Dict], output_path: str):
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump({
@@ -87,7 +87,7 @@ class XiaohongshuFetcher:
         
         print(f"✅ 已保存 {len(comments)} 条小红书评论到 {output_path}")
 
-# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     parser = argparse.ArgumentParser(description='抓取小红书评论数据')
     parser.add_argument('--keyword', type=str, required=True, help='搜索关键词')

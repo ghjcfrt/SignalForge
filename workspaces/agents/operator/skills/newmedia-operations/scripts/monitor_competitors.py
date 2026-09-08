@@ -20,7 +20,7 @@ SKILL_ROOT = SCRIPTS_DIR.parent
 MONITOR_STATE_FILE = SKILL_ROOT / "data" / "monitor_state.json"
 
 
-# 中文说明：函数「load_state」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「load_state」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def load_state() -> dict:
     """加载上次监测状态"""
     if MONITOR_STATE_FILE.exists():
@@ -29,7 +29,7 @@ def load_state() -> dict:
     return {"accounts": {}, "last_check": {}, "alerts": []}
 
 
-# 中文说明：函数「save_state」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「save_state」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def save_state(state: dict):
     """保存监测状态"""
     MONITOR_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -37,7 +37,7 @@ def save_state(state: dict):
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 
-# 中文说明：函数「fetch_account_latest」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「fetch_account_latest」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def fetch_account_latest(account: dict, platform: str) -> list:
     """抓取账号最新内容，调用同目录爬虫脚本"""
     script_map = {
@@ -68,7 +68,7 @@ def fetch_account_latest(account: dict, platform: str) -> list:
     return []
 
 
-# 中文说明：函数「detect_new_content」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「detect_new_content」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def detect_new_content(account_id: str, current_content: list, state: dict) -> list:
     """检测新增内容"""
     previous_ids = set(state.get("accounts", {}).get(account_id, {}).get("content_ids", []))
@@ -80,7 +80,7 @@ def detect_new_content(account_id: str, current_content: list, state: dict) -> l
     return new_items
 
 
-# 中文说明：函数「detect_viral_content」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「detect_viral_content」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def detect_viral_content(content_list: list, threshold: int = 100000) -> list:
     """检测爆款内容（播放量超过阈值）"""
     return [
@@ -89,7 +89,7 @@ def detect_viral_content(content_list: list, threshold: int = 100000) -> list:
     ]
 
 
-# 中文说明：函数「analyze_new_comments」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「analyze_new_comments」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def analyze_new_comments(account: dict, platform: str, content_id: str) -> dict:
     """分析新内容的评论，提取需求和痛点"""
     script = SCRIPTS_DIR / "extract_demands.py"
@@ -112,7 +112,7 @@ def analyze_new_comments(account: dict, platform: str, content_id: str) -> dict:
     return {}
 
 
-# 中文说明：函数「generate_alert」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「generate_alert」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def generate_alert(account: dict, alert_type: str, data: dict) -> dict:
     """生成监测警报"""
     return {
@@ -125,7 +125,7 @@ def generate_alert(account: dict, alert_type: str, data: dict) -> dict:
     }
 
 
-# 中文说明：函数「format_alert_message」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「format_alert_message」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def format_alert_message(alert: dict) -> str:
     """格式化警报消息"""
     timestamp = alert["timestamp"][:16].replace("T", " ")
@@ -153,7 +153,7 @@ def format_alert_message(alert: dict) -> str:
     return "\n".join(msg)
 
 
-# 中文说明：函数「run_monitor_once」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「run_monitor_once」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def run_monitor_once(accounts: list, viral_threshold: int, state: dict) -> tuple[dict, list]:
     """执行一次监测"""
     alerts = []
@@ -188,7 +188,7 @@ def run_monitor_once(accounts: list, viral_threshold: int, state: dict) -> tuple
                 alert = generate_alert(account, "viral_detected", item)
                 alerts.append(alert)
                 print(f"  → 爆款: {item.get('title', '')} ({item.get('play_count', 0):,} 播放)")
-    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
+    # 这里汇总前半段结果，继续执行后续校验、转换或输出。
 
         # 更新状态
         if account_id not in state["accounts"]:
@@ -210,7 +210,7 @@ def run_monitor_once(accounts: list, viral_threshold: int, state: dict) -> tuple
     return state, alerts
 
 
-# 中文说明：函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
+# 函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main():
     parser = argparse.ArgumentParser(description="竞品账号实时监测工具")
     parser.add_argument("--accounts", type=str, required=True,
@@ -242,7 +242,7 @@ def main():
     print(f"检测间隔: {args.check_interval}")
     print(f"爆款阈值: {args.alert_threshold:,} 播放")
     print("-" * 40)
-    # 中文说明：这里汇总前半段结果，继续执行后续校验、转换或输出。
+    # 这里汇总前半段结果，继续执行后续校验、转换或输出。
 
     state = load_state()
 

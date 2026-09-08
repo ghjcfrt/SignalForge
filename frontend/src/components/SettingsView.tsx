@@ -26,7 +26,7 @@ export default function SettingsView({ status, currentRun, onImport, onProjectMe
   const [envMessage, setEnvMessage] = useState<string | null>(null);
   const [activeEnvCategory, setActiveEnvCategory] = useState<"ai" | "other" | "optional" | null>(null);
 
-  // 中文说明：函数「applyTimeoutSettings」负责完成该界面的状态处理、交互逻辑或数据转换。
+  // 函数「applyTimeoutSettings」负责完成该界面的状态处理、交互逻辑或数据转换。
   function applyTimeoutSettings(next: TimeoutSettings) {
     setTimeoutSettings(next);
     setTimeoutDraft({
@@ -41,14 +41,14 @@ export default function SettingsView({ status, currentRun, onImport, onProjectMe
     });
   }
 
-  // 中文说明：函数「updateTimeoutDraft」负责完成该界面的状态处理、交互逻辑或数据转换。
+  // 函数「updateTimeoutDraft」负责完成该界面的状态处理、交互逻辑或数据转换。
   function updateTimeoutDraft(field: keyof TimeoutSettings, value: string) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return;
     setTimeoutDraft((current) => ({ ...current, [field]: Math.max(1, Math.floor(parsed)) }));
   }
 
-  // 中文说明：函数「toggleUnlimited」负责完成该界面的状态处理、交互逻辑或数据转换。
+  // 函数「toggleUnlimited」负责完成该界面的状态处理、交互逻辑或数据转换。
   function toggleUnlimited(field: "news" | "model", enabled: boolean) {
     setUnlimitedTimeouts((current) => ({ ...current, [field]: enabled }));
     if (!enabled) {
@@ -210,8 +210,8 @@ export default function SettingsView({ status, currentRun, onImport, onProjectMe
       setControlBusy(null);
     }
   }
-  // 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。
-  // 中文说明：中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。
+  // 中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。
+  // 中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。
 
   return (
     <div className={`single-view settings-page-shell${activeEnvCategory ? " subpage" : ""}`}>
