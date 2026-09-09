@@ -1,11 +1,5 @@
-/*
- * @Author: ghjcfrt 73391769+ghjcfrt@users.noreply.github.com
- * @Date: 2026-07-18 14:51:10
- * @LastEditors: ghjcfrt 73391769+ghjcfrt@users.noreply.github.com
- * @LastEditTime: 2026-09-08 04:01:21
- * @FilePath: \SignalForge\frontend\src\data.ts
- * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
- */
+/** 前端默认员工、阶段和展示数据。 */
+
 import {
   Bot,
   BriefcaseBusiness,

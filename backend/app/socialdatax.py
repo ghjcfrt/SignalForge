@@ -1,3 +1,5 @@
+"""SocialDataX 小红书样本搜索、转写和上下文整理。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,12 +9,17 @@ import httpx
 
 from backend.app.config import Settings
 
+# SocialDataX 的笔记搜索和视频转写接口路径。
 SOCIALDATAX_NOTE_SEARCH_PATH = "/socialdatax/api/v1/xhs/note/search"
 SOCIALDATAX_VIDEO_TRANSCRIPT_PATH = "/socialdatax/api/v1/xhs/note/transcript"
 
 
-# 函数「socialdatax_error」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def socialdatax_error(response: httpx.Response, payload: object) -> str:
+    """函数“socialdatax_error”：构造 SocialDataX 调用失败的统一错误信息。
+参数：
+    response: httpx.Response
+    payload: object
+返回：str。"""
     if isinstance(payload, dict):
         message = str(payload.get("message") or "").strip()
         code = payload.get("code")
@@ -23,8 +30,11 @@ def socialdatax_error(response: httpx.Response, payload: object) -> str:
     return f"HTTP {response.status_code}"
 
 
-# 函数「socialdatax_payload_failed」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def socialdatax_payload_failed(payload: object) -> bool:
+    """函数“socialdatax_payload_failed”：判断 SocialDataX 响应是否明确表示失败。
+参数：
+    payload: object
+返回：bool。"""
     if not isinstance(payload, dict) or "code" not in payload:
         return False
     code = payload.get("code")
@@ -33,12 +43,17 @@ def socialdatax_payload_failed(payload: object) -> bool:
     return payload.get("success") is not True
 
 
-# 函数「normalize_socialdatax_notes」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def normalize_socialdatax_notes(
     payload: object,
     parse_datetime: Callable[[object], object | None],
     coerce_count: Callable[[object], int],
 ) -> list[dict]:
+    """函数“normalize_socialdatax_notes”：将 SocialDataX 返回的笔记字段规范化为统一结构。
+参数：
+    payload: object
+    parse_datetime: Callable[[object], object | None]
+    coerce_count: Callable[[object], int]
+返回：list[dict]。"""
     if not isinstance(payload, dict):
         raise RuntimeError("SocialDataX 返回格式不是笔记列表")
     raw_items = payload.get("items") or payload.get("data")
@@ -77,7 +92,6 @@ def normalize_socialdatax_notes(
     return notes
 
 
-# 异步函数「run_socialdatax_note_search」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def run_socialdatax_note_search(
     keyword: str,
     settings: Settings,
@@ -85,7 +99,7 @@ async def run_socialdatax_note_search(
     *,
     sort_type: str = "like_count_descending",
 ) -> list[dict]:
-    """Fetch high-engagement XHS samples for the viral-analysis stage only."""
+    """只为爆款分析阶段抓取高互动小红书样本。"""
     api_key = (settings.socialdatax_api_key or "").strip()
     if not api_key:
         return []
@@ -109,12 +123,10 @@ async def run_socialdatax_note_search(
     return normalize_notes(payload)
 
 
-# 异步函数「run_socialdatax_transcript」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def run_socialdatax_transcript(note_url: str, settings: Settings) -> str:
-    """Try the paid video-to-speech step for a video sample.
+    """为视频样本尝试调用可能计费的视频转写步骤。
 
-    Transcript extraction is best-effort: an unavailable transcript must not
-    discard otherwise valid ranking samples or stop the whole workflow.
+    转写属于尽力而为：转写不可用时不能丢弃仍然有效的排行样本，也不能阻止整个工作流继续。
     """
     api_key = (settings.socialdatax_api_key or "").strip()
     timeout = None if settings.socialdatax_timeout_seconds <= 0 else settings.socialdatax_timeout_seconds
@@ -140,8 +152,12 @@ async def run_socialdatax_transcript(note_url: str, settings: Settings) -> str:
     raise RuntimeError("视频口播提取返回为空")
 
 
-# 异步函数「enrich_socialdatax_notes」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def enrich_socialdatax_notes(notes: list[dict], settings: Settings) -> tuple[list[dict], int, list[str]]:
+    """函数“enrich_socialdatax_notes”：为笔记样本补充转写和可用性信息。
+参数：
+    notes: list[dict]
+    settings: Settings
+返回：tuple[list[dict], int, list[str]]。"""
     enriched: list[dict] = []
     transcript_count = 0
     errors: list[str] = []
@@ -160,8 +176,12 @@ async def enrich_socialdatax_notes(notes: list[dict], settings: Settings) -> tup
     return enriched, transcript_count, errors
 
 
-# 函数「socialdatax_context」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def socialdatax_context(notes: list[dict], *, label: str = "样本") -> str:
+    """函数“socialdatax_context”：把 SocialDataX 样本整理为分析师可读的上下文。
+参数：
+    notes: list[dict]
+    label: str
+返回：str。"""
     if not notes:
         return "## SocialDataX 小红书样本\n\n本次没有可用的 SocialDataX 样本；不要编造点赞、收藏、评论、分享数据，只能基于选题本身给出待验证的传播假设。"
     lines = [f"## SocialDataX 小红书{label}（原始数据）", "", "以下互动量来自 SocialDataX 搜索结果，仅用于样本比较，不代表平台整体趋势：", ""]

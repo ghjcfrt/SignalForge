@@ -1,3 +1,5 @@
+/** 前端页面和 API 使用的 TypeScript 类型。 */
+
 export type AgentStatus = "online" | "idle" | "busy" | "offline";
 export type WorkflowStatus = "queued" | "running" | "paused" | "completed" | "failed";
 export type WorkflowStageStatus = "pending" | "running" | "completed" | "failed";

@@ -4,9 +4,11 @@ import { exportWorkflow, fetchEnvSettings, fetchOutputDirectorySettings, fetchSy
 import type { ApiStatus, EnvSettings, OutputDirectorySettings, SystemStatus, TimeoutSettings, ViralAnalysisConfig, WorkflowRun } from "../types";
 import ServiceCard, { type ControlAction } from "./ServiceCard";
 
+// 设置页表单的默认超时值。
 const defaultTimeoutSettings: TimeoutSettings = { news_fetch_timeout_seconds: 90, model_timeout_seconds: 30, workflow_timeout_seconds: 300 };
 function cn(...classes: Array<string | false | null | undefined>) { return classes.filter(Boolean).join(" "); }
 
+/** 设置页面，管理环境变量、超时、输出目录和本地服务。 */
 export default function SettingsView({ status, currentRun, onImport, onProjectMessage, onBackendStateChange, systemStatusSnapshot, onSystemStatusSnapshotChange, viralAnalysis, onViralAnalysisChange }: { status: ApiStatus | null; currentRun: WorkflowRun | null; onImport: (run: WorkflowRun) => void; onProjectMessage: (message: string) => void; onBackendStateChange: () => void; systemStatusSnapshot: SystemStatus | null; onSystemStatusSnapshotChange: (status: SystemStatus) => void; viralAnalysis: ViralAnalysisConfig; onViralAnalysisChange: (config: ViralAnalysisConfig) => void }) {
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(systemStatusSnapshot);
   const [controlBusy, setControlBusy] = useState<ControlAction | null>(null);
@@ -26,7 +28,7 @@ export default function SettingsView({ status, currentRun, onImport, onProjectMe
   const [envMessage, setEnvMessage] = useState<string | null>(null);
   const [activeEnvCategory, setActiveEnvCategory] = useState<"ai" | "other" | "optional" | null>(null);
 
-  // 函数「applyTimeoutSettings」负责完成该界面的状态处理、交互逻辑或数据转换。
+  /** 将服务端超时设置同步到页面表单状态。 */
   function applyTimeoutSettings(next: TimeoutSettings) {
     setTimeoutSettings(next);
     setTimeoutDraft({
@@ -41,14 +43,14 @@ export default function SettingsView({ status, currentRun, onImport, onProjectMe
     });
   }
 
-  // 函数「updateTimeoutDraft」负责完成该界面的状态处理、交互逻辑或数据转换。
+  /** 更新单个超时字段并限制为合法整数。 */
   function updateTimeoutDraft(field: keyof TimeoutSettings, value: string) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return;
     setTimeoutDraft((current) => ({ ...current, [field]: Math.max(1, Math.floor(parsed)) }));
   }
 
-  // 函数「toggleUnlimited」负责完成该界面的状态处理、交互逻辑或数据转换。
+  /** 切换新闻或模型调用是否不限时。 */
   function toggleUnlimited(field: "news" | "model", enabled: boolean) {
     setUnlimitedTimeouts((current) => ({ ...current, [field]: enabled }));
     if (!enabled) {
@@ -60,6 +62,7 @@ export default function SettingsView({ status, currentRun, onImport, onProjectMe
     }
   }
 
+  /** 执行前端界面逻辑。 */
   async function handleTimeoutSave() {
     setTimeoutBusy(true);
     setTimeoutMessage(null);
@@ -78,6 +81,7 @@ export default function SettingsView({ status, currentRun, onImport, onProjectMe
     }
   }
 
+  /** 执行前端界面逻辑。 */
   async function handleExport() {
     if (!currentRun) { onProjectMessage("当前没有可导出的项目"); return; }
     try {
@@ -93,24 +97,24 @@ export default function SettingsView({ status, currentRun, onImport, onProjectMe
     } catch (err) { onProjectMessage(err instanceof Error ? err.message : "导出失败"); }
   }
 
+  /** 执行前端界面逻辑。 */
   async function handleImport(file: File | undefined) {
     if (!file) return;
     try {
       const imported = await importWorkflow(file);
       onImport(imported);
-      // Keep the selected topic and browser checkpoint in sync immediately;
-      // otherwise the overview can be overwritten by stale local state.
+      // 立即同步选定主题和浏览器检查点，避免概览被旧的本地状态覆盖。
       onProjectMessage("项目已导入");
     }
     catch (err) { onProjectMessage(err instanceof Error ? err.message : "导入失败"); }
   }
 
+  /** 执行前端界面逻辑。 */
   async function refreshSystemStatus() {
     const next = await fetchSystemStatus();
     setSystemStatus(next);
     onSystemStatusSnapshotChange(next);
-    // A transient PowerShell/WMI failure should not remain pinned in the
-    // panel after a later refresh succeeds.
+    // PowerShell/WMI 的瞬时失败在后续刷新成功后不应继续固定显示在面板中。
     setServiceMessage(null);
     return next;
   }
@@ -134,6 +138,7 @@ export default function SettingsView({ status, currentRun, onImport, onProjectMe
     }).catch((err: Error) => setEnvMessage(err.message));
   }, []);
 
+  /** 执行前端界面逻辑。 */
   async function handleEnvSave() {
     setEnvBusy(true); setEnvMessage(null);
     try {
@@ -148,6 +153,7 @@ export default function SettingsView({ status, currentRun, onImport, onProjectMe
     finally { setEnvBusy(false); }
   }
 
+  /** 执行前端界面逻辑。 */
   async function handleOutputDirSave() {
     setOutputDirBusy(true); setOutputDirMessage(null);
     try {
@@ -157,6 +163,7 @@ export default function SettingsView({ status, currentRun, onImport, onProjectMe
     finally { setOutputDirBusy(false); }
   }
 
+  /** 执行前端界面逻辑。 */
   async function handleDirectorySelect(field: keyof OutputDirectorySettings) {
     try {
       const selected = await selectDirectory();
@@ -170,6 +177,7 @@ export default function SettingsView({ status, currentRun, onImport, onProjectMe
       .catch((err: Error) => setTimeoutMessage(err.message));
   }, []);
 
+  /** 执行前端界面逻辑。 */
   async function handleControl(action: ControlAction) {
     const confirmation =
       action === "frontend-stop"
@@ -210,8 +218,6 @@ export default function SettingsView({ status, currentRun, onImport, onProjectMe
       setControlBusy(null);
     }
   }
-  // 中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。
-  // 中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。
 
   return (
     <div className={`single-view settings-page-shell${activeEnvCategory ? " subpage" : ""}`}>

@@ -6,8 +6,9 @@ import type { Agent, AgentOutput, AgentTaskLog, TopicSeed, ViralAnalysisConfig }
 
 type AgentTaskStatus = "idle" | "running" | "completed" | "failed";
 type ViewId = (typeof navItems)[number]["id"];
+// 员工任务状态到界面文案的映射。
 const agentTaskStatusText: Record<AgentTaskStatus, string> = { idle: "待调用", running: "执行中", completed: "已完成", failed: "执行失败" };
-// These are the concrete employee descriptions used by the original console.
+// 这里定义控制台展示的员工职责与技能描述。
 const viewMeta: Record<string, { title: string; subtitle: string }> = {
   agent_hotspot_monitor: { title: "热点监控员", subtitle: "独立搜集、排序并核验热点候选。" },
   agent_viral_analyst: { title: "爆款分析师", subtitle: "独立分析爆款内容规律，拆解传播钩子、情绪冲突和受众动机。" },
@@ -19,10 +20,11 @@ const viewMeta: Record<string, { title: string; subtitle: string }> = {
   agent_stock_assistant: { title: "股票助手", subtitle: "独立处理股票和财经信息分析。" },
   agent_healer: { title: "心理疗愈师", subtitle: "独立提供情绪支持和安全边界提示。" }
 };
+/** 合并条件样式名并过滤空值。 */
 function cn(...classes: Array<string | false | null | undefined>) { return classes.filter(Boolean).join(" "); }
 function readSaved<T>(key: string, fallback: T): T { try { const value = window.localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; } catch { return fallback; } }
 
-// 函数「EmployeeWorkbench」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 员工独立工作台，编辑输入并触发单员工任务。 */
 export default function EmployeeWorkbench({
   agent,
   seed: initialSeed,
@@ -75,7 +77,7 @@ export default function EmployeeWorkbench({
     ? logs
     : logs.filter((entry) => Date.parse(entry.timestamp) > logClearCutoff);
 
-  // 函数「submit」负责完成该界面的状态处理、交互逻辑或数据转换。
+  /** 收集员工工作台输入并提交独立任务。 */
   function submit() {
     onRun(prompt, {
       domain: seed.domain,
@@ -99,7 +101,7 @@ export default function EmployeeWorkbench({
     <div className={cn("employee-workbench", isViral && "viral-workbench")}>
       <section className="panel employee-hero">
         <div className="stage-head">
-          {/* 中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。 */}
+
           <div className="stage-icon"><Icon size={20} /></div>
         </div>
         <div className="employee-hero-copy">

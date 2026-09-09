@@ -1,16 +1,22 @@
+"""员工目录与技能工作区管理。"""
+
 from pathlib import Path
 
 from backend.app.config import WORKSPACE_DIR
 from backend.app.schemas import Agent, Skill
 
 
-# 函数「_workspace」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _workspace(agent_id: str) -> str:
+    """内部辅助函数“_workspace”：返回指定员工的工作目录路径。
+参数：
+    agent_id: str
+返回：str。"""
     path = WORKSPACE_DIR / "agents" / agent_id
     path.mkdir(parents=True, exist_ok=True)
     return str(path)
 
 
+# 员工注册表：每项包含职责、工作目录和可调用技能。
 AGENTS: list[Agent] = [
     Agent(
         id="hotspot_monitor",
@@ -136,10 +142,12 @@ AGENTS: list[Agent] = [
 ]
 
 
+# 按员工 ID 建立快速索引，供 API 和工作流编排查询。
 AGENT_BY_ID = {agent.id: agent for agent in AGENTS}
 
 
-# 函数「ensure_agent_workspaces」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def ensure_agent_workspaces() -> None:
+    """函数“ensure_agent_workspaces”：确保所有员工工作目录和技能目录存在，并返回员工清单。
+返回：None。"""
     for agent in AGENTS:
         Path(agent.workspace).mkdir(parents=True, exist_ok=True)

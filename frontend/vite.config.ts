@@ -1,3 +1,5 @@
+/** Vite 开发服务器、本地进程控制端点和代理配置。 */
+
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import net from "node:net";
@@ -42,10 +44,12 @@ type SystemStatus = {
   generated_at: string;
 };
 
+/** 将字符串安全转义为 PowerShell 单引号字符串。 */
 function psString(value: string) {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
+/** 在工作区执行 PowerShell 脚本并返回去除空白的标准输出。 */
 async function runPowerShell(script: string) {
   const { stdout } = await execFileAsync(
     "powershell.exe",
@@ -60,9 +64,7 @@ async function runPowerShell(script: string) {
   return stdout.trim();
 }
 
-// WMI queries are unusually slow on Windows and frequently time out while a
-// reloading uvicorn process is spawning. netstat/tasklist provide the actual
-// listener PID quickly, so the control panel never has to invent PID 0.
+// Windows 下 WMI 查询较慢且容易超时；netstat/tasklist 可以更快获取监听进程 PID。
 async function getNativeProcessSnapshot(port: number): Promise<ManagedProcess[]> {
   if (process.platform !== "win32") return [];
   const { stdout: netstat } = await execFileAsync("netstat.exe", ["-ano", "-p", "tcp"], {
@@ -90,6 +92,7 @@ async function getNativeProcessSnapshot(port: number): Promise<ManagedProcess[]>
   }));
 }
 
+/** 把 PowerShell 返回的 JSON 列表规范化为统一进程数组。 */
 function normalizeProcessList(raw: string): ManagedProcess[] {
   if (!raw) {
     return [];
@@ -98,12 +101,13 @@ function normalizeProcessList(raw: string): ManagedProcess[] {
   return Array.isArray(parsed) ? parsed : [parsed];
 }
 
+/** 查询占用指定端口的项目进程，优先使用 Windows 原生快速枚举。 */
 async function getPortProcesses(port: number): Promise<ManagedProcess[]> {
   try {
     const native = await getNativeProcessSnapshot(port);
     if (process.platform === "win32") return native;
   } catch {
-    // Use the richer WMI path below when native enumeration is unavailable.
+    // 本机枚举不可用时，再使用下面更完整但更慢的 WMI 路径。
   }
   const root = psString(workspaceRoot);
   const script = `
@@ -131,13 +135,12 @@ $items = foreach ($pidValue in $pids) {
   try {
     return normalizeProcessList(await runPowerShell(script));
   } catch {
-    // WMI can briefly lag while uvicorn is spawning/restarting.  Returning an
-    // empty snapshot keeps the control endpoint responsive; reachability is
-    // checked below so a live backend is not shown as stopped.
+    // uvicorn 启动或重启期间 WMI 可能暂时滞后；返回空快照并在下方检查连通性。
     return [];
   }
 }
 
+/** 汇总本地前后端进程、端口和工作区状态。 */
 async function getSystemStatus(): Promise<SystemStatus> {
   if (systemStatusCache && systemStatusCache.expiresAt > Date.now()) {
     return systemStatusCache.value;
@@ -161,17 +164,12 @@ async function getSystemStatus(): Promise<SystemStatus> {
       backendHealth = false;
     }
   }
-  // A reachable TCP port is not enough to claim that SignalForge is running:
-  // it may belong to another process or be a stale socket during reload.
+  // 仅端口可连接不能证明 SignalForge 正在运行，端口可能属于其他进程或重载残留。
   const backendOwned = backendProcesses.some((item) => item.project_owned) || backendHealth;
   const backendOccupied = backendProcesses.length > 0 || backendReachable;
-  // This code runs inside the Vite process that serves /local-control, so the
-  // current frontend is known to be project-owned even when WMI briefly
-  // returns no process row.
+  // 当前代码运行在提供 /local-control 的 Vite 进程中，因此可确认前端归属。
   const frontendOwned = true;
-  // Native PID enumeration intentionally avoids the slow WMI command-line
-  // lookup. Once the service identity is verified, attach that ownership to
-  // the real listener rows so the UI does not label them as foreign PIDs.
+  // 原生 PID 枚举避免慢速 WMI 命令行查询；确认服务归属后再标记真实监听进程。
   const ownedBackendProcesses = backendHealth
     ? backendProcesses.map((item) => ({ ...item, project_owned: true }))
     : backendProcesses;
@@ -196,8 +194,7 @@ async function getSystemStatus(): Promise<SystemStatus> {
     },
     frontend: {
       name: "frontend",
-      // This endpoint is served by the current Vite process, so it is a
-      // reliable indicator even when Windows process enumeration lags.
+      // 该端点由当前 Vite 进程提供，即使 Windows 进程枚举滞后也可作为可靠信号。
       running: true,
       port_occupied: true,
       port: frontendPort,
@@ -215,13 +212,12 @@ async function getSystemStatus(): Promise<SystemStatus> {
     workspace: workspaceRoot,
     generated_at: new Date().toISOString()
   };
-  // The settings page polls every five seconds; short caching prevents the
-  // initial render and an immediate refresh from spawning duplicate WMI
-  // queries, which are comparatively slow on Windows.
+  // 设置页每五秒轮询一次，短缓存可避免重复发起昂贵的 WMI 查询。
   systemStatusCache = { value, expiresAt: Date.now() + 1500 };
   return value;
 }
 
+/** 尝试连接本地端口，返回端口是否可达。 */
 function canConnect(port: number) {
   return new Promise<boolean>((resolve) => {
     const socket = net.createConnection({ host: "127.0.0.1", port }, () => {
@@ -236,6 +232,7 @@ function canConnect(port: number) {
   });
 }
 
+/** 在限定时间内等待端口达到期望的开放或关闭状态。 */
 async function waitForPort(port: number, expectedOpen: boolean, timeoutMs = 10_000) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
@@ -247,6 +244,7 @@ async function waitForPort(port: number, expectedOpen: boolean, timeoutMs = 10_0
   return false;
 }
 
+/** 启动本地后端并确认端口和进程归属。 */
 async function startBackend() {
   systemStatusCache = null;
   const status = await getSystemStatus();
@@ -278,9 +276,7 @@ async function startBackend() {
   }).unref();
 
   const opened = await waitForPort(backendPort, true);
-  // A listening socket can appear a moment before the child process metadata
-  // is visible to PowerShell/WMI.  Do not report an ambiguous state during
-  // that short startup window; verify ownership a few times before giving up.
+  // 监听 socket 可能早于子进程元数据出现；启动短窗口内先多次确认归属。
   if (opened) {
     for (let attempt = 0; attempt < 12; attempt += 1) {
       const nextStatus = await getSystemStatus();
@@ -299,14 +295,14 @@ async function startBackend() {
   return opened ? "Backend port opened, but status could not be confirmed." : "Backend start was requested, but the port is not listening yet.";
 }
 
+/** 停止本地后端及其重载子进程，并确认端口已释放。 */
 async function stopBackend() {
   systemStatusCache = null;
   const status = await getSystemStatus();
   const pids = status.backend.processes.map((item) => item.pid).filter((pid) => pid > 0);
   let stopped = 0;
   if (process.platform === "win32") {
-    // taskkill terminates the reloader and its worker in one call and avoids
-    // the slow, failure-prone whole-machine WMI process-tree scan.
+    // taskkill 可一次终止重载器及其工作进程，避免慢速且易失败的全机 WMI 扫描。
     for (const pid of new Set(pids)) {
       try {
         await execFileAsync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], {
@@ -316,8 +312,7 @@ async function stopBackend() {
         });
         stopped += 1;
       } catch {
-        // The process may have exited during reload; status verification below
-        // determines whether the port was actually released.
+        // 进程可能在重载期间已退出，下面的状态检查会确认端口是否真正释放。
       }
     }
   } else {
@@ -326,7 +321,7 @@ async function stopBackend() {
         process.kill(pid, "SIGTERM");
         stopped += 1;
       } catch {
-        // Ignore already-exited processes.
+        // 忽略已经退出的进程。
       }
     }
   }
@@ -338,12 +333,14 @@ async function stopBackend() {
     : "No project backend process was listening.";
 }
 
+/** 向本地控制端点写入 JSON 响应。 */
 function writeJson(res: { statusCode?: number; setHeader: (name: string, value: string) => void; end: (data?: string) => void }, body: unknown, statusCode = 200) {
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.end(JSON.stringify(body));
 }
 
+/** 创建 Vite 插件，提供本地前后端进程控制接口。 */
 function localControlPlugin() {
   return {
     name: "signalforge-local-control",
@@ -394,9 +391,7 @@ function localControlPlugin() {
               ok: true,
               message: "Shutdown requested. Backend and frontend are shutting down."
             });
-            // Respond first so the browser can leave the loading state. The
-            // current page remains visible after Vite exits, so this ordering
-            // also lets the UI show a meaningful completed state.
+            // 先返回响应，让浏览器离开加载状态；随后页面会显示已完成状态。
             setTimeout(() => {
               void stopBackend().finally(() => process.exit(0));
             }, 100);

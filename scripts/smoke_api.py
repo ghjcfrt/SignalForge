@@ -1,4 +1,4 @@
-"""HTTP smoke test for a running SignalForge backend.
+"""针对已运行 SignalForge 后端的 HTTP 冒烟测试。
 
 Usage: ``python scripts/smoke_api.py [base_url]``
 """
@@ -11,11 +11,17 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
+# 冒烟测试目标地址，可通过第一个命令行参数覆盖。
 BASE_URL = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8017").rstrip("/")
 
 
-# 函数「request」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def request(path: str, method: str = "GET", payload: object | None = None) -> tuple[int, object]:
+    """函数“request”，负责request。
+参数：
+    path: str
+    method: str
+    payload: object | None
+返回：tuple[int, object]。"""
     data = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = {"Content-Type": "application/json"} if data else {}
     try:
@@ -29,8 +35,9 @@ def request(path: str, method: str = "GET", payload: object | None = None) -> tu
         raise AssertionError(f"无法连接后端 {BASE_URL}: {exc.reason}") from exc
 
 
-# 函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main() -> None:
+    """函数“main”，负责main。
+返回：None。"""
     status, health = request("/api/health")
     assert status == 200 and health.get("status") == "ok", health
 

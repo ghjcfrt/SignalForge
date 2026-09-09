@@ -1,3 +1,5 @@
+"""股票数据采集和分析报告生成。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -11,15 +13,17 @@ from backend.app.config import WORKSPACE_DIR, Settings
 from backend.app.llm import LlmGateway
 from backend.app.schemas import StockAnalysisRequest, StockAnalysisResult
 
+# 股票 Skill 目录、数据脚本、提示词模板和报告模板。
 STOCK_SKILL_DIR = WORKSPACE_DIR / "agents" / "stock_assistant" / "skills" / "stock-analysis"
 STOCK_DATA_SCRIPT = STOCK_SKILL_DIR / "references" / "stock_data_fetcher.py"
 STOCK_ANALYSIS_PROMPT = STOCK_SKILL_DIR / "references" / "analysis-prompt-template.md"
+# 股票分析结果的中文输出格式模板。
 STOCK_OUTPUT_TEMPLATE = STOCK_SKILL_DIR / "references" / "output-format-template.md"
+# 按股票、天数和是否包含新闻缓存近期分析结果。
 STOCK_ANALYSIS_CACHE: dict[tuple[str, int, bool], tuple[float, StockAnalysisResult]] = {}
 
-# 异步函数「analyze_stocks」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def analyze_stocks(request: StockAnalysisRequest, settings: Settings) -> StockAnalysisResult:
-    """Run the installed Stock Analysis Skill for finance/stock requests."""
+    """执行已安装的股票分析 Skill，返回行情、指标和风险说明。"""
     cache_key = (request.stocks.strip().upper(), request.days, request.include_news)
     cached = STOCK_ANALYSIS_CACHE.get(cache_key)
     if cached and settings.stock_cache_ttl_seconds > 0 and time.monotonic() - cached[0] < settings.stock_cache_ttl_seconds:
@@ -96,8 +100,11 @@ async def analyze_stocks(request: StockAnalysisRequest, settings: Settings) -> S
         STOCK_ANALYSIS_CACHE[cache_key] = (time.monotonic(), final.model_copy(deep=True))
     return final
 
-# 函数「stock_sources_health」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def stock_sources_health(settings: Settings) -> dict[str, object]:
+    """函数“stock_sources_health”：检查股票数据源及其依赖脚本是否可用。
+参数：
+    settings: Settings
+返回：dict[str, object]。"""
     libraries = {name: bool(importlib.util.find_spec(name)) for name in ("tushare", "efinance", "akshare", "yfinance")}
     return {
         "status": "ok" if any(libraries.values()) else "unavailable",

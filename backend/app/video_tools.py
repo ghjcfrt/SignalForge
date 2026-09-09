@@ -1,3 +1,5 @@
+"""MoneyPrinterTurbo 视频生成工具适配。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -11,14 +13,18 @@ from pydantic import BaseModel
 from backend.app.config import WORKSPACE_DIR, Settings
 
 
+# MoneyPrinterTurbo Skill 目录和执行脚本位置。
 MPT_SKILL_DIR = WORKSPACE_DIR / "agents" / "video_editor" / "skills" / "moneyprinterturbo-video"
+# Skill 说明、执行辅助脚本、许可证和上游 README 文件。
 MPT_SKILL_FILE = MPT_SKILL_DIR / "SKILL.md"
 MPT_HELPER_FILE = MPT_SKILL_DIR / "mpt_agent.py"
 MPT_LICENSE_FILE = MPT_SKILL_DIR / "LICENSE.MoneyPrinterTurbo"
+# 上游项目 README，用于在状态接口展示来源说明。
 MPT_README_FILE = MPT_SKILL_DIR / "README.MoneyPrinterTurbo.md"
 
 
 class MoneyPrinterTurboStatus(BaseModel):
+    """视频生成工具的安装状态、版本和可执行性。"""
     installed: bool
     skill_dir: str
     skill_file: str
@@ -31,6 +37,7 @@ class MoneyPrinterTurboStatus(BaseModel):
 
 
 class MoneyPrinterTurboRequest(BaseModel):
+    """视频生成任务的输入参数和超时策略。"""
     subject: str
     extra_args: list[str] = []
     output_dir: str | None = None
@@ -38,6 +45,7 @@ class MoneyPrinterTurboRequest(BaseModel):
 
 
 class MoneyPrinterTurboRunResult(BaseModel):
+    """视频生成任务的执行结果、产物路径和状态。"""
     exit_code: int
     status: str
     stdout: str
@@ -48,8 +56,11 @@ class MoneyPrinterTurboRunResult(BaseModel):
     result_file: str | None = None
 
 
-# 函数「mpt_status」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def mpt_status(settings: Settings) -> MoneyPrinterTurboStatus:
+    """函数“mpt_status”，负责mpt status。
+参数：
+    settings: Settings
+返回：MoneyPrinterTurboStatus。"""
     missing_env: list[str] = []
     provider = "oneapi"
     llm_key = settings.ai_api_key
@@ -75,8 +86,11 @@ def mpt_status(settings: Settings) -> MoneyPrinterTurboStatus:
     )
 
 
-# 函数「_mpt_env」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _mpt_env(settings: Settings) -> dict[str, str]:
+    """内部辅助函数“_mpt_env”，负责mpt env。
+参数：
+    settings: Settings
+返回：dict[str, str]。"""
     env = os.environ.copy()
     env["MPT_LLM_PROVIDER"] = "oneapi"
     env["MPT_LLM_BASE_URL"] = settings.ai_base_url
@@ -89,8 +103,11 @@ def _mpt_env(settings: Settings) -> dict[str, str]:
     return env
 
 
-# 函数「_parse_mpt_output」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _parse_mpt_output(stdout: str) -> dict[str, str | list[str]]:
+    """内部辅助函数“_parse_mpt_output”，负责parse mpt output。
+参数：
+    stdout: str
+返回：dict[str, str | list[str]]。"""
     values: dict[str, str | list[str]] = {"video_files": []}
     for line in stdout.splitlines():
         if line.startswith("VIDEO_FILE="):
@@ -106,12 +123,17 @@ def _parse_mpt_output(stdout: str) -> dict[str, str | list[str]]:
     return values
 
 
-# 异步函数「run_moneyprinterturbo」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def run_moneyprinterturbo(
     request: MoneyPrinterTurboRequest,
     settings: Settings,
     timeout_seconds: int | None = 0,
 ) -> MoneyPrinterTurboRunResult:
+    """函数“run_moneyprinterturbo”，负责run moneyprinterturbo。
+参数：
+    request: MoneyPrinterTurboRequest
+    settings: Settings
+    timeout_seconds: int | None
+返回：MoneyPrinterTurboRunResult。"""
     if not MPT_HELPER_FILE.exists():
         return MoneyPrinterTurboRunResult(
             exit_code=1,
@@ -128,9 +150,7 @@ async def run_moneyprinterturbo(
         "run",
         "--no-project",
         "--python",
-        # Pin the fully-qualified patch release.  On this machine uv's
-        # `3.11` minor-version junction is stale, while the installed
-        # 3.11.15 interpreter is valid.
+        # 固定完整的 Python 补丁版本，避免本机 uv 的小版本入口失效。
         "3.11.15",
         "python",
         "mpt_agent.py",
@@ -143,16 +163,10 @@ async def run_moneyprinterturbo(
         request.video_aspect,
     ]
     try:
-        # Video rendering is intentionally unbounded by default.  It may
-        # involve dependency installation, downloads, TTS and encoding, all
-        # of which can legitimately exceed a fixed request timeout.  Keep an
-    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-        # explicit timeout available for callers that need a hard cap.
-        # Do not use asyncio.create_subprocess_exec here: uvicorn may run
-        # under Windows' SelectorEventLoop (notably with --reload), whose
-        # subprocess transport raises NotImplementedError.  Running the
-        # blocking subprocess in a worker works with either loop policy.
+        # 默认不限制视频渲染时长，因为依赖安装、下载、TTS 和编码都可能耗时较久；
+        # 调用方仍可传入显式超时来设置硬上限。
+        # 不使用 asyncio.create_subprocess_exec：Windows 下的 uvicorn 可能运行在不支持子进程传输的事件循环；
+        # 将阻塞子进程放到线程池，可兼容不同事件循环策略。
         run_options = {
             "cwd": MPT_SKILL_DIR,
             "env": _mpt_env(settings),

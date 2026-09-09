@@ -1,2 +1,2 @@
-"""FastAPI application package."""
+"""SignalForge FastAPI 应用包。"""
 

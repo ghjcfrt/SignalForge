@@ -1,3 +1,5 @@
+"""热点候选解析、相关性评分和来源核验。"""
+
 from __future__ import annotations
 
 import json
@@ -10,6 +12,10 @@ from backend.app.schemas import SourceEvidence, Topic, TopicSeed
 
 
 def extract_json_payload(content: str) -> object:
+    """函数“extract_json_payload”：从模型文本中提取 JSON 对象或数组。
+参数：
+    content: str
+返回：object。"""
     text = content.strip()
     if text.startswith("```"):
         lines = text.splitlines()
@@ -34,6 +40,10 @@ def extract_json_payload(content: str) -> object:
 
 
 def coerce_heat(value: object) -> int:
+    """函数“coerce_heat”：将热度输入安全转换为 0 到 100 的整数。
+参数：
+    value: object
+返回：int。"""
     if isinstance(value, bool):
         return 0
     if isinstance(value, (int, float)):
@@ -49,6 +59,10 @@ def coerce_heat(value: object) -> int:
 
 
 def coerce_count(value: object) -> int:
+    """函数“coerce_count”：将数量输入安全转换为非负整数。
+参数：
+    value: object
+返回：int。"""
     try:
         return max(0, int(value or 0))
     except (TypeError, ValueError, OverflowError):
@@ -56,12 +70,16 @@ def coerce_count(value: object) -> int:
 
 
 def source_domain(url: str) -> str:
+    """函数“source_domain”：从 URL 提取来源域名。
+参数：
+    url: str
+返回：str。"""
     host = (urlparse(url).hostname or "").lower()
     return host[4:] if host.startswith("www.") else host
 
 
 def evidence_domain(source: SourceEvidence) -> str:
-    """Return the publisher domain, including known RSS/search fallbacks."""
+    """返回发布方域名，并处理已知 RSS 或搜索中转域名。"""
     name = source.name.casefold()
     for needles, domain in ((("reuters",), "reuters.com"), (("bbc",), "bbc.co.uk"), (("华尔街", "wallstreet"), "wallstreetcn.com"), (("微博", "weibo"), "weibo.com")):
         if any(needle in name for needle in needles):
@@ -70,7 +88,7 @@ def evidence_domain(source: SourceEvidence) -> str:
 
 
 def news_relevance(item: dict, seed: TopicSeed) -> float:
-    """Estimate whether a fetched item is about the requested direction."""
+    """估算抓取条目是否属于请求的内容方向。"""
     haystack = f"{item.get('title', '')} {item.get('summary', '')}".casefold()
     seed_text = f"{seed.domain} {seed.brief}".casefold()
     ascii_terms = re.findall(r"[a-z0-9][a-z0-9+#.-]{1,}", seed_text)
@@ -85,25 +103,34 @@ def news_relevance(item: dict, seed: TopicSeed) -> float:
 
 
 def task_overlap_score(text: str, seed: TopicSeed) -> float:
-    """Score overlap with the requested domain, keeping audience boilerplate out."""
+    """计算文本与请求领域的重合度，并排除受众模板语句。"""
     return min(1.0, news_relevance({"title": text}, TopicSeed(domain=seed.domain, brief="", audience="")) * 0.70 + news_relevance({"title": text}, TopicSeed(domain="", brief=seed.brief, audience="")) * 0.30)
 
 
+# 用于识别“来源不足/抓取失败”等诊断文本的正则模式。
 _DIAGNOSTIC_TOPIC_PATTERNS = (r"缺乏可用来源", r"不构成.{0,12}(热点|候选)", r"本批次", r"仅检测到", r"未出现", r"无法从.{0,20}(确认|判断)", r"缺少.{0,8}(核验|证据|来源)", r"来源不足", r"模型未返回", r"需补充", r"提示[:：]", r"作为泛.{0,8}(舆情|叙事)", r"报错", r"(?:执行|请求|抓取|来源|模型|搜索|接口).{0,8}(?:失败|错误|超时)", r"(?:失败|错误|超时).{0,8}(?:执行|请求|抓取|来源|模型|搜索|接口)", r"\b(?:error|failed|failure|exception|timeout)\b")
 
 
 def is_diagnostic_topic(topic: Topic) -> bool:
-    """Reject model prose that reports a collection/validation problem."""
+    """拒绝描述采集或核验问题的模型伪选题。"""
     text = " ".join((topic.title, topic.source_hint, topic.angle)).casefold()
     return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in _DIAGNOSTIC_TOPIC_PATTERNS)
 
 
 def clean_topic_title(title: str) -> str:
-    # ``（候选）`` is a model label, not part of the actual headline.
+    # “（候选）”是模型标签，不属于正式标题。
+    """函数“clean_topic_title”：清理模型标题中的标签和多余空白。
+参数：
+    title: str
+返回：str。"""
     return re.sub(r"^\s*[（(]\s*候选\s*[）)]\s*", "", title).strip()
 
 
 def _topic_tokens(text: str) -> set[str]:
+    """内部辅助函数“_topic_tokens”，负责topic tokens。
+参数：
+    text: str
+返回：set[str]。"""
     aliases = {"戴尔": "dell", "服务器": "server", "算力": "compute", "英伟达": "nvidia", "黄仁勋": "jensen", "开放人工智能": "openai", "人工智能": "ai", "代理": "agent"}
     normalized = text.casefold()
     for source, target in aliases.items():
@@ -116,7 +143,7 @@ def _topic_tokens(text: str) -> set[str]:
 
 
 def augment_topic_sources(topics: list[Topic], raw_items: list[dict], parse_datetime: Callable[[object], object]) -> None:
-    """Attach corroborating fetched items the model omitted from ``sources``."""
+    """将模型遗漏的抓取条目补充到选题佐证来源中。"""
     for topic in topics:
         known_urls = {source.url for source in topic.sources}
         topic_tokens = _topic_tokens(f"{topic.title} {topic.source_hint}")
@@ -136,10 +163,9 @@ def augment_topic_sources(topics: list[Topic], raw_items: list[dict], parse_date
 
 
 def rank_news_items(items: list[dict], seed: TopicSeed, source_weights: dict[str, float]) -> list[dict]:
-    """Rank every fetched item before the model sees it.
+    """在交给模型前为全部抓取条目排序。
 
-    Ranking is only a prioritisation hint. It never turns a single source into
-    a verified fact; the later source-domain gate remains authoritative.
+    排序只是优先级提示，不会把单一来源变成已核验事实；最终仍由来源域名门槛决定。
     """
     now = datetime.now().timestamp()
     ranked: list[dict] = []
@@ -152,8 +178,7 @@ def rank_news_items(items: list[dict], seed: TopicSeed, source_weights: dict[str
         engagement = coerce_count(copy.get("engagement") or copy.get("hot") or copy.get("heat") or copy.get("read_count") or copy.get("view_count"))
         source = str(copy.get("source") or copy.get("channel") or "").casefold()
         weight = next((weight for name, weight in source_weights.items() if name in source), 0.70)
-        # Domain overlap is the primary filter. Engagement is only a small
-        # tie-breaker so a generic hot-search list cannot dominate.
+        # 先按领域重合度筛选，互动量只用于少量并列排序，避免泛热点压过相关内容。
         score = task_overlap_score(f"{copy.get('title', '')} {copy.get('summary', '')}", seed) * 70 + weight * 15 + recency * 10 + min(1.0, engagement / 1_000_000) * 5
         copy["rank_score"] = round(score, 3)
         copy["rank_reason"] = {"source_weight": weight, "recency": round(recency, 3), "relevance": round(news_relevance(copy, seed), 3), "engagement": engagement}
@@ -163,11 +188,9 @@ def rank_news_items(items: list[dict], seed: TopicSeed, source_weights: dict[str
 
 
 def diversify_news_items(items: list[dict], limit: int) -> list[dict]:
-    """Keep the model evidence window representative across source labels.
+    """保持模型证据窗口覆盖多个来源标签。
 
-    Ranking by engagement alone can fill all slots with one real-time hot list,
-    hiding entries that could corroborate an event. Round-robin sampling gives
-    every configured source a chance.
+    仅按互动量排序可能让单一实时榜占满全部位置，遮挡可用于事件佐证的条目；轮询抽样让每个配置来源都有机会进入证据窗口。
     """
     if len(items) <= limit:
         return items
@@ -188,7 +211,7 @@ def diversify_news_items(items: list[dict], limit: int) -> list[dict]:
 
 
 def validate_topics(topics: list[Topic], seed: TopicSeed | None = None, now: Callable[[], datetime] | None = None) -> list[Topic]:
-    """Validate all candidates before selecting one for downstream work."""
+    """在选择下游选题前，校验全部候选项。"""
     merged: dict[str, Topic] = {}
     for topic in topics:
         topic.title = clean_topic_title(topic.title)

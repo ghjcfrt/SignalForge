@@ -1,3 +1,5 @@
+"""模型网关、重试策略和可用性诊断。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -10,17 +12,22 @@ from backend.app.config import Settings
 
 @dataclass(frozen=True)
 class ChatResult:
+    """模型调用结果，包含生成内容、错误信息和原始响应状态。"""
     content: str
     live: bool
 
 
 class LlmGateway:
-    """Thin OpenAI-compatible gateway with a deterministic local fallback."""
+    """OpenAI 兼容的模型网关，内置确定性的本地回退。"""
 
+    # 模型可用性检查的最大尝试次数。
     MODEL_CHECK_RETRIES = 3
 
-    # 函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def __init__(self, settings: Settings) -> None:
+        """内部辅助函数“__init__”：初始化服务对象及其依赖。
+参数：
+    settings: Settings
+返回：None。"""
         self.settings = settings
         self._client: AsyncOpenAI | None = None
         if settings.ai_api_key:
@@ -29,9 +36,8 @@ class LlmGateway:
                 base_url=settings.ai_base_url,
             )
 
-    # 函数「_failure_detail」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def _failure_detail(self, exc: Exception) -> str:
-        """Return provider context instead of hiding the real fallback cause."""
+        """返回供应商上下文，避免把真实的回退原因隐藏掉。"""
         detail = str(exc).strip() or type(exc).__name__
         cause = exc.__cause__ or exc.__context__
         if cause and str(cause).strip() and str(cause).strip() not in detail:
@@ -42,9 +48,12 @@ class LlmGateway:
             f"error_type={type(exc).__name__}; detail={detail}"
         )
 
-    # 函数「_is_retryable_network_error」负责完成该步骤的输入处理、核心逻辑和结果返回。
     @staticmethod
     def _is_retryable_network_error(exc: Exception) -> bool:
+        """内部辅助函数“_is_retryable_network_error”：判断异常是否属于可以重试的网络错误。
+参数：
+    exc: Exception
+返回：bool。"""
         name = type(exc).__name__.casefold()
         module = type(exc).__module__.casefold()
         if any(token in name for token in ("connection", "timeout", "network")):
@@ -53,7 +62,6 @@ class LlmGateway:
             return True
         return getattr(exc, "status_code", None) in {408, 429, 500, 502, 503, 504}
 
-    # 异步函数「complete」负责完成该步骤的输入处理、核心逻辑和结果返回。
     async def complete(
         self,
         *,
@@ -63,6 +71,14 @@ class LlmGateway:
         temperature: float = 0.6,
         _retry_attempt: int = 0,
     ) -> ChatResult:
+        """函数“complete”：调用模型服务生成文本，并返回完整响应或失败信息。
+参数：
+    system: str
+    user: str
+    fallback: str
+    temperature: float
+    _retry_attempt: int
+返回：ChatResult。"""
         if not self._client:
             return ChatResult(content=fallback, live=False)
 
@@ -77,8 +93,6 @@ class LlmGateway:
                     {"role": "user", "content": user},
                 ],
                 "temperature": temperature,
-        # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-        # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
             }
             response = await self._client.chat.completions.create(**request)
         except Exception as exc:
@@ -102,9 +116,8 @@ class LlmGateway:
         content = response.choices[0].message.content or fallback
         return ChatResult(content=content.strip(), live=True)
 
-    # 异步函数「check_model」负责完成该步骤的输入处理、核心逻辑和结果返回。
     async def check_model(self) -> tuple[bool, str | None]:
-        """Verify that the configured model is actually routable before UI claims live mode."""
+        """在界面声明实时模式前，验证已配置模型确实可路由。"""
         if not self._client:
             return False, "AI_API_KEY 未配置"
         if not self.settings.ai_model:
@@ -121,7 +134,7 @@ class LlmGateway:
                 last_error = exc
                 if not self._is_retryable_network_error(exc) or attempt >= self.MODEL_CHECK_RETRIES:
                     break
-                # A short exponential backoff smooths over transient provider/network failures.
+                # 使用短暂的指数退避，平滑处理供应商或网络的瞬时失败。
                 await asyncio.sleep(min(2 ** attempt, 4))
 
         assert last_error is not None

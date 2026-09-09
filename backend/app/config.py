@@ -1,3 +1,5 @@
+"""运行时配置读取、脱敏展示和持久化更新。"""
+
 import json
 from functools import lru_cache
 from pathlib import Path
@@ -10,17 +12,20 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from backend.app.schemas import EnvSettings, EnvSettingsUpdate, OutputDirectorySettings, SecretSetting, TimeoutSettings
 
 
+# 项目根目录、工作区目录和运行时设置文件位置。
 ROOT_DIR = Path(__file__).resolve().parents[2]
 WORKSPACE_DIR = ROOT_DIR / "workspaces"
+# JSON 形式保存用户在界面修改的运行时设置。
 RUNTIME_SETTINGS_PATH = WORKSPACE_DIR / "runtime-settings.json"
+# 保护运行时设置文件读写的进程内锁。
 _RUNTIME_SETTINGS_LOCK = RLock()
 
 load_dotenv(ROOT_DIR / ".env")
 
-
 class Settings(BaseSettings):
-    """Runtime configuration for the workshop."""
+    """应用运行时配置，统一管理环境变量和可持久化设置。"""
 
+    # AI 供应商连接参数；密钥支持多个兼容变量名。
     ai_api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("AI_API_KEY", "OPENAI_API_KEY_YW_SF", "MPT_LLM_API_KEY"),
@@ -33,8 +38,11 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("AI_MODEL", "OPENAI_MODEL_YW_SF", "MPT_LLM_MODEL_NAME"),
     )
+    # MoneyPrinterTurbo 所需的素材服务密钥。
     mpt_pexels_api_key: str | None = Field(default=None, alias="MPT_PEXELS_API_KEY")
+    # 本地 FastAPI 服务监听端口。
     backend_port: int = Field(default=8017, alias="BACKEND_PORT")
+    # 股票、搜索和社交样本服务的可选凭据。
     tushare_token: str | None = Field(default=None, alias="TUSHARE_TOKEN")
     tavily_api_key: str | None = Field(default=None, alias="TAVILY_API_KEY")
     serpapi_key: str | None = Field(default=None, alias="SERPAPI_KEY")
@@ -48,6 +56,7 @@ class Settings(BaseSettings):
         ge=0,
         alias="SOCIALDATAX_TIMEOUT_SECONDS",
     )
+    # 新闻抓取、模型调用和整条工作流的超时；0 表示不限时。
     workflow_timeout_seconds: int = Field(
         default=300,
         ge=0,
@@ -63,16 +72,21 @@ class Settings(BaseSettings):
         ge=0,
         validation_alias=AliasChoices("MODEL_TIMEOUT_SECONDS"),
     )
+    # 新闻来源策略、RSS 列表及本地 fixture 路径。
     news_source_mode: str = Field(default="live_then_fixture", alias="NEWS_SOURCE_MODE")
     news_rss_feeds: str = Field(default="", alias="NEWS_RSS_FEEDS")
     news_fixture_path: str | None = Field(default=None, alias="NEWS_FIXTURE_PATH")
+    # 股票数据请求的重试次数和缓存时长。
     stock_fetch_retries: int = Field(default=2, ge=0, le=5, alias="STOCK_FETCH_RETRIES")
     stock_cache_ttl_seconds: int = Field(default=60, ge=0, le=3600, alias="STOCK_CACHE_TTL_SECONDS")
 
-    # 函数「empty_model_means_auto」负责完成该步骤的输入处理、核心逻辑和结果返回。
     @field_validator("ai_model", mode="before")
     @classmethod
     def empty_model_means_auto(cls, value: str | None) -> str | None:
+        """函数“empty_model_means_auto”：将空模型名标准化为 None，使调用方可以自动选择模型。
+参数：
+    value: str | None
+返回：str | None。"""
         return value.strip() or None if isinstance(value, str) else value
 
     model_config = SettingsConfigDict(
@@ -82,15 +96,17 @@ class Settings(BaseSettings):
         populate_by_name=True,
     )
 
-    # 函数「ai_enabled」负责完成该步骤的输入处理、核心逻辑和结果返回。
     @property
     def ai_enabled(self) -> bool:
+        """函数“ai_enabled”：根据是否配置 AI 密钥判断实时模型能力是否启用。
+返回：bool。"""
         return bool(self.ai_api_key)
 
 
-# 函数「get_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
 @lru_cache
 def get_settings() -> Settings:
+    """函数“get_settings”：读取并缓存环境变量及运行时配置文件中的完整设置。
+返回：Settings。"""
     settings = Settings()
     with _RUNTIME_SETTINGS_LOCK:
         try:
@@ -105,8 +121,9 @@ def get_settings() -> Settings:
     return settings
 
 
-# 函数「get_timeout_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def get_timeout_settings() -> TimeoutSettings:
+    """函数“get_timeout_settings”：返回当前生效的新闻、模型和工作流超时设置。
+返回：TimeoutSettings。"""
     settings = get_settings()
     return TimeoutSettings(
         news_fetch_timeout_seconds=settings.news_fetch_timeout_seconds,
@@ -115,8 +132,9 @@ def get_timeout_settings() -> TimeoutSettings:
     )
 
 
-# 函数「get_output_directory_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def get_output_directory_settings() -> OutputDirectorySettings:
+    """函数“get_output_directory_settings”：读取用户配置的成片与运营产物输出目录。
+返回：OutputDirectorySettings。"""
     with _RUNTIME_SETTINGS_LOCK:
         try:
             payload = json.loads(RUNTIME_SETTINGS_PATH.read_text(encoding="utf-8"))
@@ -125,9 +143,12 @@ def get_output_directory_settings() -> OutputDirectorySettings:
             return OutputDirectorySettings()
 
 
-# 函数「update_output_directory_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def update_output_directory_settings(value: OutputDirectorySettings) -> OutputDirectorySettings:
-    # Preserve timeout settings in the shared runtime-settings file.
+    # 保留共享运行时配置文件中的超时设置。
+    """函数“update_output_directory_settings”：持久化输出目录，同时保留同一文件中的其他运行时设置。
+参数：
+    value: OutputDirectorySettings
+返回：OutputDirectorySettings。"""
     with _RUNTIME_SETTINGS_LOCK:
         RUNTIME_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -139,8 +160,11 @@ def update_output_directory_settings(value: OutputDirectorySettings) -> OutputDi
     return value
 
 
-# 函数「update_timeout_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def update_timeout_settings(value: TimeoutSettings) -> TimeoutSettings:
+    """函数“update_timeout_settings”：更新内存与运行时配置文件中的三个超时值。
+参数：
+    value: TimeoutSettings
+返回：TimeoutSettings。"""
     settings = get_settings()
     settings.news_fetch_timeout_seconds = value.news_fetch_timeout_seconds
     settings.model_timeout_seconds = value.model_timeout_seconds
@@ -156,6 +180,7 @@ def update_timeout_settings(value: TimeoutSettings) -> TimeoutSettings:
     return get_timeout_settings()
 
 
+# 前端可编辑字段到 .env 变量名的映射。
 _ENV_FIELDS = {
     "ai_api_key": "AI_API_KEY",
     "ai_base_url": "AI_BASE_URL",
@@ -169,11 +194,15 @@ _ENV_FIELDS = {
     "tavily_api_key": "TAVILY_API_KEY",
     "serpapi_key": "SERPAPI_KEY",
 }
+# 必须脱敏展示且不允许空值覆盖的密钥字段。
 _SECRET_FIELDS = {"ai_api_key", "mpt_pexels_api_key", "socialdatax_api_key", "tushare_token", "tavily_api_key", "serpapi_key"}
 
 
-# 函数「_secret_setting」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _secret_setting(value: str | None) -> SecretSetting:
+    """内部辅助函数“_secret_setting”：将密钥转换为仅含配置状态和脱敏预览的安全模型。
+参数：
+    value: str | None
+返回：SecretSetting。"""
     if not value:
         return SecretSetting()
     if len(value) > 8:
@@ -185,8 +214,9 @@ def _secret_setting(value: str | None) -> SecretSetting:
     return SecretSetting(configured=True, preview=preview)
 
 
-# 函数「get_env_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def get_env_settings() -> EnvSettings:
+    """函数“get_env_settings”：返回可安全展示给前端的环境变量配置。
+返回：EnvSettings。"""
     settings = get_settings()
     return EnvSettings(
         ai_api_key=_secret_setting(settings.ai_api_key),
@@ -203,16 +233,15 @@ def get_env_settings() -> EnvSettings:
     )
 
 
-# 函数「update_env_settings」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def update_env_settings(value: EnvSettingsUpdate) -> EnvSettings:
-    """Persist editable values to .env and reload settings for this process."""
+    """将可编辑配置写入 .env，并重新加载当前进程的设置。"""
     ROOT_DIR.joinpath(".env").touch(exist_ok=True)
     data = value.model_dump(exclude_unset=True)
     for field, env_name in _ENV_FIELDS.items():
         if field not in data or data[field] is None:
             continue
-        # Empty secret values intentionally leave the existing secret intact;
-        # this lets the UI submit a blank field without erasing credentials.
+        # 空的密钥字段表示“不修改”，保留现有凭据；
+        # 这样前端可以提交空输入而不会误删密钥。
         if field in _SECRET_FIELDS and not str(data[field]).strip():
             continue
         set_key(str(ROOT_DIR / ".env"), env_name, str(data[field]))

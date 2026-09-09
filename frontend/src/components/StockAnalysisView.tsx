@@ -4,8 +4,10 @@ import { analyzeStocks, fetchStockSourcesHealth } from "../api";
 import type { StockAnalysisResult } from "../types";
 import MarkdownContent from "./MarkdownContent";
 
+/** 合并条件样式名并过滤空值。 */
 function cn(...classes: Array<string | false | null | undefined>) { return classes.filter(Boolean).join(" "); }
 
+/** 股票分析页面，提交请求并展示报告。 */
 export default function StockAnalysisView() {
   const [stocks, setStocks] = useState("600519");
   const [result, setResult] = useState<StockAnalysisResult | null>(null);
@@ -15,6 +17,7 @@ export default function StockAnalysisView() {
 
   useEffect(() => { fetchStockSourcesHealth().then(setHealth).catch(() => setHealth(null)); }, []);
 
+  /** 执行前端界面逻辑。 */
   async function handleAnalyze() {
     setBusy(true); setMessage(null);
     try { setResult(await analyzeStocks({ stocks })); }
@@ -22,7 +25,6 @@ export default function StockAnalysisView() {
     finally { setBusy(false); }
   }
 
-  // 函数「StockAnalysisView」负责完成该界面的状态处理、交互逻辑或数据转换。
   return <div className="single-view">
     <section className="panel action-panel"><div className="panel-heading"><div><h2>股票助手 · Stock Analysis Skill</h2><p>财经、股票和股票新闻请求默认调用此 Skill。支持 A 股、港股、美股。</p></div><button className="primary-button" onClick={handleAnalyze} disabled={busy || !stocks.trim()} type="button">{busy ? <Loader2 className="spin" size={18} /> : <TrendingUp size={18} />}<span>{busy ? "分析中" : "开始分析"}</span></button></div>
       <div className="form-grid"><label className="wide"><span>股票代码或名称（逗号分隔）</span><input value={stocks} onChange={(event) => setStocks(event.target.value)} placeholder="600519, TSLA, HK00700" /></label></div>

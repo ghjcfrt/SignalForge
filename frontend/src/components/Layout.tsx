@@ -17,6 +17,7 @@ export const viewMeta: Record<string, { title: string; subtitle: string }> = {
   agent_healer: { title: "自愈工程师", subtitle: "独立员工工作台" }
 };
 
+/** 合并条件样式名并过滤空值。 */
 function cn(...classes: Array<string | false | null | undefined>) { return classes.filter(Boolean).join(" "); }
 
 export function ShellNav({ activeView, onViewChange, closing, shutdownComplete, onShutdown }: { activeView: ViewId; onViewChange: (view: ViewId) => void; closing: boolean; shutdownComplete: boolean; onShutdown: () => void }) {
@@ -35,11 +36,13 @@ export function ShellNav({ activeView, onViewChange, closing, shutdownComplete, 
   </aside>;
 }
 
+/** 执行前端界面逻辑。 */
 export function TopBar({ activeView, status, running, onRun }: { activeView: ViewId; status: ApiStatus | null; running: boolean; onRun: () => void }) {
   const meta = viewMeta[activeView]; const isEmployeeView = activeView.startsWith("agent_"); const isConsoleView = activeView === "overview";
   return <header className="topbar"><div><h1>{isEmployeeView ? "独立工作台" : meta.title}</h1>{!isEmployeeView && <p>{meta.subtitle}</p>}</div><div className="topbar-actions"><div className={cn("api-pill", status?.mode === "live" ? "ok" : "warn")} title={status?.diagnostic ?? undefined}>{status?.mode === "live" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}<span>{status ? ({ live: "实时 AI", "local-template": "本地模板" } as Record<string, string>)[status.mode] : "检测中"}</span></div>{isConsoleView && <button className="primary-button" onClick={onRun} disabled={running}>{running ? <Loader2 className="spin" size={18} /> : <Play size={18} />}<span>{running ? "运行中" : "运行工作流"}</span></button>}</div></header>;
 }
 
+/** 执行前端界面逻辑。 */
 export function SettingsStrip({ status, collapsed, onToggle }: { status: ApiStatus | null; collapsed: boolean; onToggle: () => void }) {
   return <section className={cn("settings-strip", collapsed && "collapsed")} aria-label="AI 运行状态">{!collapsed && <div className="settings-strip-content"><div><span>Key Path</span><strong>{status?.key_preview ?? "未配置"}</strong></div><div><span>Base URL</span><strong>{status?.base_url ?? "https://api.openlux.ai/v1"}</strong></div><div><span>Model</span><strong>{status?.model ?? "中转站自动选择"}</strong></div><div><span>AI Health</span><strong>{status?.model_available ? "模型可用" : status?.diagnostic ?? "检查中"}</strong></div></div>}<button className="settings-strip-toggle" type="button" onClick={onToggle} aria-label={collapsed ? "展开 AI 运行状态" : "收起 AI 运行状态"} title={collapsed ? "展开 AI 运行状态" : "收起 AI 运行状态"}>{collapsed ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}</button></section>;
 }

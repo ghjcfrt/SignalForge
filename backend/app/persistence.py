@@ -1,3 +1,5 @@
+"""工作流产物、检查点和日志的磁盘持久化工具。"""
+
 from __future__ import annotations
 
 import json
@@ -10,6 +12,13 @@ from backend.app.schemas import AgentOutput, WorkflowLog, WorkflowRun
 
 
 def write_artifact(run_dir: Path, agent_id: str, filename: str, content: str) -> str:
+    """函数“write_artifact”：将文本内容写入工作流产物文件并返回路径。
+参数：
+    run_dir: Path
+    agent_id: str
+    filename: str
+    content: str
+返回：str。"""
     agent_dir = run_dir / agent_id
     agent_dir.mkdir(parents=True, exist_ok=True)
     path = agent_dir / filename
@@ -18,6 +27,15 @@ def write_artifact(run_dir: Path, agent_id: str, filename: str, content: str) ->
 
 
 def output(run_dir: Path, agent_id: str, title: str, content: str, output_dir: str | None = None, now: Callable[[], object] | None = None) -> AgentOutput:
+    """函数“output”：创建一条员工产物记录。
+参数：
+    run_dir: Path
+    agent_id: str
+    title: str
+    content: str
+    output_dir: str | None
+    now: Callable[[], object] | None
+返回：AgentOutput。"""
     agent = AGENT_BY_ID[agent_id]
     if output_dir is None:
         configured = get_output_directory_settings()
@@ -28,6 +46,10 @@ def output(run_dir: Path, agent_id: str, title: str, content: str, output_dir: s
 
 
 def checkpoint(workflow: WorkflowRun) -> None:
+    """函数“checkpoint”：保存工作流检查点。
+参数：
+    workflow: WorkflowRun
+返回：None。"""
     run_dir = Path(workflow.run_dir); run_dir.mkdir(parents=True, exist_ok=True)
     temporary = run_dir / "run-state.json.tmp"
     temporary.write_text(json.dumps(workflow.model_dump(mode="json"), ensure_ascii=False, indent=2), encoding="utf-8")
@@ -35,7 +57,7 @@ def checkpoint(workflow: WorkflowRun) -> None:
 
 
 def workflow_log_path(workflow: WorkflowRun, log_filename: str, legacy_filename: str) -> Path:
-    """Return the canonical log path and migrate the previous JSONL filename."""
+    """返回标准日志路径，并在需要时迁移旧版 JSONL 文件名。"""
     run_dir = Path(workflow.run_dir); run_dir.mkdir(parents=True, exist_ok=True)
     path = run_dir / log_filename; legacy_path = run_dir / legacy_filename
     if legacy_path.exists():
@@ -48,7 +70,7 @@ def workflow_log_path(workflow: WorkflowRun, log_filename: str, legacy_filename:
 
 
 def log(workflow: WorkflowRun, message: str, *, stage: str | None = None, level: str = "info", detail: str | None = None, now: Callable[[], object] | None = None, log_filename: str = "run.log", legacy_filename: str = "run.log.jsonl") -> None:
-    """Persist a human-readable event and structured diagnostic immediately."""
+    """立即持久化可读事件文本和结构化诊断信息。"""
     entry = WorkflowLog(timestamp=now() if now else __import__("datetime").datetime.now().astimezone(), level=level if level in {"info", "warning", "error"} else "info", stage=stage, message=message, detail=detail)
     workflow.logs.append(entry)
     with workflow_log_path(workflow, log_filename, legacy_filename).open("a", encoding="utf-8") as log_file:
@@ -57,6 +79,12 @@ def log(workflow: WorkflowRun, message: str, *, stage: str | None = None, level:
 
 
 def load_persisted_runs(runs: dict[str, WorkflowRun], ensure_state: Callable[[WorkflowRun], None], log_fn: Callable[..., None]) -> None:
+    """函数“load_persisted_runs”：扫描磁盘并加载已有工作流。
+参数：
+    runs: dict[str, WorkflowRun]
+    ensure_state: Callable[[WorkflowRun], None]
+    log_fn: Callable[..., None]
+返回：None。"""
     runs_dir = WORKSPACE_DIR / "runs"
     if not runs_dir.exists(): return
     for state_path in runs_dir.glob("*/run-state.json"):

@@ -1,3 +1,5 @@
+"""热点监控到运营发布的分阶段工作流编排。"""
+
 from __future__ import annotations
 
 import json
@@ -68,23 +70,33 @@ from backend.app.persistence import (
 )
 
 
+# 进程内工作流索引；磁盘检查点是重启后的权威数据来源。
 RUNS: dict[str, WorkflowRun] = {}
+# 工作流阶段按依赖顺序排列，阶段重跑会从指定位置向后执行。
 WORKFLOW_STAGES = ["hotspot_monitor", "viral_analyst", "copywriter", "video_editor", "operator"]
 WORKFLOW_LOG_FILENAME = "run.log"
+# 兼容旧版任务使用的 JSONL 日志文件名。
 LEGACY_WORKFLOW_LOG_FILENAME = "run.log.jsonl"
+# 股票分析和新闻 Skill 的工作区脚本路径。
 STOCK_SKILL_DIR = WORKSPACE_DIR / "agents" / "stock_assistant" / "skills" / "stock-analysis"
+# 股票数据脚本及两个分析模板文件。
 STOCK_DATA_SCRIPT = STOCK_SKILL_DIR / "references" / "stock_data_fetcher.py"
 STOCK_ANALYSIS_PROMPT = STOCK_SKILL_DIR / "references" / "analysis-prompt-template.md"
 STOCK_OUTPUT_TEMPLATE = STOCK_SKILL_DIR / "references" / "output-format-template.md"
+# 新闻聚合 Skill 的目录。
 NEWS_SKILL_DIR = WORKSPACE_DIR / "agents" / "hotspot_monitor" / "skills" / "news-aggregator-skill"
+# 新闻 Skill 的抓取入口脚本。
 NEWS_FETCH = NEWS_SKILL_DIR / "scripts" / "fetch_news.py"
+# 外部服务 API 路径、抓取上限和来源权重。
 SOCIALDATAX_NOTE_SEARCH_PATH = "/socialdatax/api/v1/xhs/note/search"
 SOCIALDATAX_VIDEO_TRANSCRIPT_PATH = "/socialdatax/api/v1/xhs/note/transcript"
 NEWS_FETCH_LIMIT = 30
+# RSS 回退来源以及股票分析缓存。
 NEWS_RSS_FEEDS = (
     ("BBC", "https://feeds.bbci.co.uk/news/rss.xml"),
     ("BBC 中文", "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"),
 )
+# 股票分析短期缓存和新闻来源可靠性权重。
 STOCK_ANALYSIS_CACHE: dict[tuple[str, int, bool], tuple[float, StockAnalysisResult]] = {}
 NEWS_SOURCE_WEIGHTS = {
     "weibo": 1.00,
@@ -93,31 +105,46 @@ NEWS_SOURCE_WEIGHTS = {
     "bbc_top": 0.88,
     "bbc_chinese": 0.88,
 }
+# 供超时包装器复用的泛型返回类型变量。
 _T = TypeVar("_T")
 
 
-# 函数「_require_skill」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _require_skill(agent_id: str, skill_name: str) -> Path:
+    """内部辅助函数“_require_skill”，负责require skill。
+参数：
+    agent_id: str
+    skill_name: str
+返回：Path。"""
     skill_dir = WORKSPACE_DIR / "agents" / agent_id / "skills" / skill_name
     if not skill_dir.exists():
         raise RuntimeError(f"{agent_id} 的 Skill 不存在：{skill_dir}")
     return skill_dir
 
 
-# 函数「_exception_detail」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _exception_detail(exc: Exception) -> str:
+    """内部辅助函数“_exception_detail”，负责exception detail。
+参数：
+    exc: Exception
+返回：str。"""
     return str(exc) or type(exc).__name__
 
 
-# 异步函数「_await_with_optional_timeout」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def _await_with_optional_timeout(awaitable: Awaitable[_T], timeout_seconds: int) -> _T:
+    """内部辅助函数“_await_with_optional_timeout”，负责按需应用超时并等待异步结果。
+参数：
+    awaitable: Awaitable[_T]
+    timeout_seconds: int
+返回：_T。"""
     if timeout_seconds <= 0:
         return await awaitable
     return await asyncio.wait_for(awaitable, timeout=timeout_seconds)
 
 
-# 函数「_parse_public_datetime」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _parse_public_datetime(value: object) -> datetime | None:
+    """内部辅助函数“_parse_public_datetime”，负责parse public datetime。
+参数：
+    value: object
+返回：datetime | None。"""
     if isinstance(value, datetime):
         parsed = value
     elif isinstance(value, (int, float)) and not isinstance(value, bool):
@@ -152,29 +179,40 @@ def _parse_public_datetime(value: object) -> datetime | None:
     return parsed
 
 
-# 函数「_extract_json_payload」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _extract_json_payload(content: str) -> object:
+    """内部辅助函数“_extract_json_payload”，负责extract json payload。
+参数：
+    content: str
+返回：object。"""
     return _extract_json_payload_module(content)
 
 
-# 函数「_coerce_heat」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _coerce_heat(value: object) -> int:
+    """内部辅助函数“_coerce_heat”，负责coerce heat。
+参数：
+    value: object
+返回：int。"""
     return _coerce_heat_module(value)
 
 
-# 函数「_coerce_count」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _coerce_count(value: object) -> int:
+    """内部辅助函数“_coerce_count”，负责coerce count。
+参数：
+    value: object
+返回：int。"""
     return _coerce_count_module(value)
 
 
-# 函数「_source_domain」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _source_domain(url: str) -> str:
+    """内部辅助函数“_source_domain”，负责source domain。
+参数：
+    url: str
+返回：str。"""
     return _source_domain_module(url)
 
 
-# 函数「_evidence_domain」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _evidence_domain(source: SourceEvidence) -> str:
-    """Return the publisher domain, including known RSS/search fallbacks.
+    """返回发布方域名，并处理已知 RSS 或搜索中转域名。
 
     Reuters items can arrive through Google News RSS, so the transport host
     (news.google.com) is not the publishing domain. Using the declared source
@@ -183,8 +221,11 @@ def _evidence_domain(source: SourceEvidence) -> str:
     return _evidence_domain_module(source)
 
 
-# 函数「_source_weight」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _source_weight(item: dict) -> float:
+    """内部辅助函数“_source_weight”，负责source weight。
+参数：
+    item: dict
+返回：float。"""
     source = str(item.get("source") or item.get("channel") or "").casefold()
     for name, weight in NEWS_SOURCE_WEIGHTS.items():
         if name in source:
@@ -192,9 +233,8 @@ def _source_weight(item: dict) -> float:
     return 0.70
 
 
-# 函数「_news_relevance」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _news_relevance(item: dict, seed: TopicSeed) -> float:
-    """Estimate whether a fetched item is about the requested direction.
+    """估算抓取条目是否属于请求的内容方向。
 
     The old whitespace split treated a Chinese brief as one giant token, so
     unrelated headlines could all reach the evidence-only fallback.  Keep the
@@ -204,22 +244,20 @@ def _news_relevance(item: dict, seed: TopicSeed) -> float:
     return _news_relevance_module(item, seed)
 
 
-# 函数「_task_overlap_score」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _task_overlap_score(text: str, seed: TopicSeed) -> float:
-    """Score overlap with the requested domain, keeping audience boilerplate out."""
+    """计算文本与请求领域的重合度，并排除受众模板语句。"""
     return _task_overlap_score_module(text, seed)
 
 
-# 函数「_topic_heat_score」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _topic_heat_score(topic: Topic, seed: TopicSeed) -> int:
-    """Compute a deterministic 0-100 score from relevance and evidence quality.
+    """依据相关性和证据质量计算确定性的 0 到 100 分数。
 
     Weights intentionally put task fit first, then independent corroboration.
     A second URL on the same publisher does not count as a second source.
     """
     title_hint_overlap = _task_overlap_score(f"{topic.title} {topic.source_hint}", seed)
     claim_overlap = _task_overlap_score(" ".join(source.claim for source in topic.sources), seed)
-    # Claims support the headline but cannot rescue an unrelated title.
+    # 事实声明只能支持标题，不能挽救与任务方向无关的标题。
     overlap = title_hint_overlap * 0.80 + claim_overlap * 0.20
     if title_hint_overlap < 0.10:
         overlap *= 0.25
@@ -232,8 +270,7 @@ def _topic_heat_score(topic: Topic, seed: TopicSeed) -> int:
         recency = max(0.0, 1.0 - age_days / 14.0)
     else:
         recency = 0.0
-    # Source reliability is a small tie-breaker; it must not overpower fit or
-    # independent corroboration.
+    # 来源可靠性只作为并列时的轻量加分，不能压过任务匹配度和独立佐证。
     reliability = 0.0
     for source in topic.sources:
         name = source.name.casefold()
@@ -244,6 +281,7 @@ def _topic_heat_score(topic: Topic, seed: TopicSeed) -> int:
     return max(0, min(100, round(overlap * 55 + corroboration * 30 + recency * 10 + reliability * 5)))
 
 
+# 与 topic_validation 模块保持一致的诊断标题模式，兼容旧工作流入口。
 _DIAGNOSTIC_TOPIC_PATTERNS = (
     r"缺乏可用来源",
     r"不构成.{0,12}(热点|候选)",
@@ -265,9 +303,8 @@ _DIAGNOSTIC_TOPIC_PATTERNS = (
 )
 
 
-# 函数「_is_diagnostic_topic」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _is_diagnostic_topic(topic: Topic) -> bool:
-    """Reject model prose that reports a collection/validation problem.
+    """拒绝描述采集或核验问题的模型伪选题。
 
     Such prose used to be wrapped in a valid ``Topic`` object and displayed as
     a headline.  Check the title and supporting hint because models often put
@@ -276,14 +313,20 @@ def _is_diagnostic_topic(topic: Topic) -> bool:
     return _is_diagnostic_topic_module(topic)
 
 
-# 函数「_clean_topic_title」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _clean_topic_title(title: str) -> str:
-    # ``（候选）`` is a model label, not part of the actual headline.
+    # “（候选）”是模型标签，不属于正式标题。
+    """内部辅助函数“_clean_topic_title”，负责clean topic title。
+参数：
+    title: str
+返回：str。"""
     return _clean_topic_title_module(title)
 
 
-# 函数「_topic_match_tokens」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _topic_match_tokens(text: str) -> set[str]:
+    """内部辅助函数“_topic_match_tokens”，负责topic match tokens。
+参数：
+    text: str
+返回：set[str]。"""
     aliases = {
         "戴尔": "dell", "服务器": "server", "算力": "compute", "英伟达": "nvidia",
         "黄仁勋": "jensen", "开放人工智能": "openai", "人工智能": "ai", "代理": "agent",
@@ -300,26 +343,27 @@ def _topic_match_tokens(text: str) -> set[str]:
     }
 
 
-# 函数「_source_supports_topic」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _source_supports_topic(topic: Topic, item: dict) -> bool:
+    """内部辅助函数“_source_supports_topic”，负责source supports topic。
+参数：
+    topic: Topic
+    item: dict
+返回：bool。"""
     topic_tokens = _topic_match_tokens(f"{topic.title} {topic.source_hint}")
     item_tokens = _topic_match_tokens(f"{item.get('title', '')} {item.get('summary', '')}")
     overlap = topic_tokens & item_tokens
     strong_ascii = {token for token in overlap if re.fullmatch(r"[a-z0-9+#.-]{4,}", token)}
-    # Two shared content terms are enough for translated headlines; a single
-    # distinctive long token (e.g. Dell, OpenAI, Astra) is also acceptable.
+    # 翻译后的标题共享两个内容词即可；一个足够独特的长词也可以通过。
     return len(overlap) >= 2 or bool(strong_ascii)
 
 
-# 函数「_augment_topic_sources」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _augment_topic_sources(topics: list[Topic], raw_items: list[dict]) -> None:
-    """Attach corroborating fetched items the model omitted from ``sources``."""
+    """将模型遗漏的抓取条目补充到选题佐证来源中。"""
     _augment_topic_sources_module(topics, raw_items, _parse_public_datetime)
 
 
-# 函数「_rank_news_items」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _rank_news_items(items: list[dict], seed: TopicSeed) -> list[dict]:
-    """Rank every fetched item before the model sees it.
+    """在交给模型前为全部抓取条目排序。
 
     Ranking is only a prioritisation hint. It never turns a single source into
     a verified fact; the later source-domain gate remains authoritative.
@@ -327,9 +371,8 @@ def _rank_news_items(items: list[dict], seed: TopicSeed) -> list[dict]:
     return _rank_news_items_module(items, seed, NEWS_SOURCE_WEIGHTS)
 
 
-# 函数「_diversify_news_items」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _diversify_news_items(items: list[dict], limit: int = NEWS_FETCH_LIMIT) -> list[dict]:
-    """Keep the model evidence window representative across source labels.
+    """保持模型证据窗口覆盖多个来源标签。
 
     Ranking by engagement alone can fill all 30 slots with Weibo's real-time
     hot list, hiding BBC/Wall Street/Reuters entries that could corroborate an
@@ -339,11 +382,15 @@ def _diversify_news_items(items: list[dict], limit: int = NEWS_FETCH_LIMIT) -> l
     return _diversify_news_items_module(items, limit)
 
 
-# 函数「_normalize_source_evidence」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _normalize_source_evidence(
     source: object,
     evidence_by_url: dict[str, dict],
 ) -> SourceEvidence | None:
+    """内部辅助函数“_normalize_source_evidence”，负责normalize source evidence。
+参数：
+    source: object
+    evidence_by_url: dict[str, dict]
+返回：SourceEvidence | None。"""
     if not isinstance(source, dict):
         return None
     url = str(source.get("url") or "").strip()
@@ -369,8 +416,12 @@ def _normalize_source_evidence(
     return SourceEvidence(name=name, url=url, published_at=published_at, claim=claim)
 
 
-# 函数「_normalize_model_topics」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _normalize_model_topics(content: str, raw_items: list[dict]) -> list[Topic]:
+    """内部辅助函数“_normalize_model_topics”，负责normalize model topics。
+参数：
+    content: str
+    raw_items: list[dict]
+返回：list[Topic]。"""
     payload = _extract_json_payload(content)
     if isinstance(payload, dict):
         payload = payload.get("topics", [])
@@ -402,8 +453,6 @@ def _normalize_model_topics(content: str, raw_items: list[dict]) -> list[Topic]:
         status = "verified" if is_verified else "unverified"
         checked_at = _parse_public_datetime(item.get("checked_at")) or datetime.now().astimezone()
         source_names = "、".join(dict.fromkeys(source.name for source in sources))
-    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
         try:
             topics.append(
                 Topic.model_validate(
@@ -437,8 +486,12 @@ def _normalize_model_topics(content: str, raw_items: list[dict]) -> list[Topic]:
     return _validate_topics(topics)
 
 
-# 函数「_evidence_only_topics」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _evidence_only_topics(raw_items: list[dict], seed: TopicSeed | None = None) -> list[Topic]:
+    """内部辅助函数“_evidence_only_topics”，负责从来源证据生成候选选题。
+参数：
+    raw_items: list[dict]
+    seed: TopicSeed | None
+返回：list[Topic]。"""
     topics: list[Topic] = []
     seen_urls: set[str] = set()
     for item in raw_items:
@@ -471,20 +524,22 @@ def _evidence_only_topics(raw_items: list[dict], seed: TopicSeed | None = None) 
                 angle=f"围绕“{title}”梳理公开信息，避免超出来源内容。",
                 risk="单一来源，发布前必须复核原文，不要把未核验信息当作事实。",
             )
-        # Do not turn collection diagnostics or clearly off-topic headlines
-        # into user-facing candidates when the model fallback is used.
+        # 模型回退时，不要把采集诊断信息或明显无关的标题展示为候选选题。
         if _is_diagnostic_topic(topic):
             continue
         topics.append(topic)
-        # Continue traversing the complete source result. The limit is applied
-        # after validation so an early single-source item cannot hide a later
-        # independently corroborated candidate.
+        # 先遍历并校验完整来源结果，再应用数量上限，避免前面的单一来源遮挡后续佐证。
     topics = topics[:20]
     return _validate_topics(topics, seed)
 
 
 # 保留旧私有函数名，实际校验逻辑已迁移到 topic_validation 模块。
 def _validate_topics(topics: list[Topic], seed: TopicSeed | None = None) -> list[Topic]:
+    """内部辅助函数“_validate_topics”，负责validate topics。
+参数：
+    topics: list[Topic]
+    seed: TopicSeed | None
+返回：list[Topic]。"""
     validated = _validate_topics_module(topics, None, now=_now)
     if seed is not None:
         for topic in validated:
@@ -493,8 +548,11 @@ def _validate_topics(topics: list[Topic], seed: TopicSeed | None = None) -> list
     return validated
 
 
-# 异步函数「_run_news_aggregator」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def _run_news_aggregator(timeout_seconds: int | None = None) -> list[dict]:
+    """内部辅助函数“_run_news_aggregator”，负责run news aggregator。
+参数：
+    timeout_seconds: int | None
+返回：list[dict]。"""
     settings = get_settings()
     return await _run_news_aggregator_module(
         timeout_seconds,
@@ -508,8 +566,11 @@ async def _run_news_aggregator(timeout_seconds: int | None = None) -> list[dict]
     )
 
 
-# 异步函数「_run_news_skill」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def _run_news_skill(timeout_seconds: int) -> list[dict]:
+    """内部辅助函数“_run_news_skill”，负责run news skill。
+参数：
+    timeout_seconds: int
+返回：list[dict]。"""
     settings = get_settings()
     return await _run_news_skill_module(
         timeout_seconds,
@@ -520,18 +581,25 @@ async def _run_news_skill(timeout_seconds: int) -> list[dict]:
     )
 
 
-# 函数「_configured_news_rss_feeds」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _configured_news_rss_feeds() -> tuple[tuple[str, str], ...]:
+    """内部辅助函数“_configured_news_rss_feeds”，负责configured news rss feeds。
+返回：tuple[tuple[str, str], ...]。"""
     return _configured_rss_feeds_module(get_settings().news_rss_feeds)
 
 
-# 函数「_load_news_fixture」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _load_news_fixture(path_value: str | None) -> list[dict]:
+    """内部辅助函数“_load_news_fixture”，负责load news fixture。
+参数：
+    path_value: str | None
+返回：list[dict]。"""
     return _load_news_fixture_module(path_value, parse_datetime=_parse_public_datetime)
 
 
-# 异步函数「_run_builtin_news_aggregator」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def _run_builtin_news_aggregator(timeout_seconds: int) -> list[dict]:
+    """内部辅助函数“_run_builtin_news_aggregator”，负责run builtin news aggregator。
+参数：
+    timeout_seconds: int
+返回：list[dict]。"""
     return await _run_builtin_news_aggregator_module(
         timeout_seconds,
         feeds=_configured_news_rss_feeds(),
@@ -540,84 +608,128 @@ async def _run_builtin_news_aggregator(timeout_seconds: int) -> list[dict]:
     )
 
 
-# 函数「_socialdatax_error」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _socialdatax_error(response: httpx.Response, payload: object) -> str:
+    """内部辅助函数“_socialdatax_error”，负责socialdatax error。
+参数：
+    response: httpx.Response
+    payload: object
+返回：str。"""
     return _socialdatax_error_module(response, payload)
 
 
-# 函数「_socialdatax_payload_failed」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _socialdatax_payload_failed(payload: object) -> bool:
+    """内部辅助函数“_socialdatax_payload_failed”，负责socialdatax payload failed。
+参数：
+    payload: object
+返回：bool。"""
     return _socialdatax_payload_failed_module(payload)
 
 
-# 函数「_normalize_socialdatax_notes」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _normalize_socialdatax_notes(payload: object) -> list[dict]:
+    """内部辅助函数“_normalize_socialdatax_notes”，负责normalize socialdatax notes。
+参数：
+    payload: object
+返回：list[dict]。"""
     return _normalize_socialdatax_notes_module(payload, _parse_public_datetime, _coerce_count)
 
 
-# 异步函数「_run_socialdatax_note_search」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def _run_socialdatax_note_search(
     keyword: str,
     settings: Settings,
     *,
     sort_type: str = "like_count_descending",
 ) -> list[dict]:
+    """内部辅助函数“_run_socialdatax_note_search”，负责run socialdatax note search。
+参数：
+    keyword: str
+    settings: Settings
+    sort_type: str
+返回：list[dict]。"""
     return await _run_socialdatax_note_search_module(keyword, settings, _normalize_socialdatax_notes, sort_type=sort_type)
 
 
-# 异步函数「_run_socialdatax_transcript」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def _run_socialdatax_transcript(note_url: str, settings: Settings) -> str:
+    """内部辅助函数“_run_socialdatax_transcript”，负责run socialdatax transcript。
+参数：
+    note_url: str
+    settings: Settings
+返回：str。"""
     return await _run_socialdatax_transcript_module(note_url, settings)
 
 
-# 异步函数「_enrich_socialdatax_notes」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def _enrich_socialdatax_notes(notes: list[dict], settings: Settings) -> tuple[list[dict], int, list[str]]:
+    """内部辅助函数“_enrich_socialdatax_notes”，负责enrich socialdatax notes。
+参数：
+    notes: list[dict]
+    settings: Settings
+返回：tuple[list[dict], int, list[str]]。"""
     return await _enrich_socialdatax_notes_module(notes, settings)
 
 
-# 函数「_socialdatax_context」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _socialdatax_context(notes: list[dict], *, label: str = "样本") -> str:
+    """内部辅助函数“_socialdatax_context”，负责socialdatax context。
+参数：
+    notes: list[dict]
+    label: str
+返回：str。"""
     return _socialdatax_context_module(notes, label=label)
 
 
-# 异步函数「analyze_stocks」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def analyze_stocks(request: StockAnalysisRequest, settings: Settings) -> StockAnalysisResult:
-    """Backward-compatible workflow facade for the extracted stock module."""
+    """为已拆分的股票模块保留向后兼容的工作流入口。"""
     return await _analyze_stocks_module(request, settings)
 
 
-# 函数「stock_sources_health」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def stock_sources_health(settings: Settings) -> dict[str, object]:
-    """Backward-compatible workflow facade for the extracted stock module."""
+    """为已拆分的股票模块保留向后兼容的工作流入口。"""
     return _stock_sources_health_module(settings)
 
 
-# 函数「_now」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _now() -> datetime:
+    """内部辅助函数“_now”，负责now。
+返回：datetime。"""
     return datetime.now().astimezone()
 
 
-# 函数「_write_artifact」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _write_artifact(run_dir: Path, agent_id: str, filename: str, content: str) -> str:
+    """内部辅助函数“_write_artifact”，负责write artifact。
+参数：
+    run_dir: Path
+    agent_id: str
+    filename: str
+    content: str
+返回：str。"""
     return _write_artifact_module(run_dir, agent_id, filename, content)
 
 
-# 函数「_output」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _output(run_dir: Path, agent_id: str, title: str, content: str, output_dir: str | None = None) -> AgentOutput:
+    """内部辅助函数“_output”，负责output。
+参数：
+    run_dir: Path
+    agent_id: str
+    title: str
+    content: str
+    output_dir: str | None
+返回：AgentOutput。"""
     return _output_module(run_dir, agent_id, title, content, output_dir, now=_now)
 
 
-# 函数「_checkpoint」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _checkpoint(workflow: WorkflowRun) -> None:
+    """内部辅助函数“_checkpoint”，负责checkpoint。
+参数：
+    workflow: WorkflowRun
+返回：None。"""
     _checkpoint_module(workflow)
 
 
-# 函数「_workflow_log_path」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _workflow_log_path(workflow: WorkflowRun) -> Path:
+    """内部辅助函数“_workflow_log_path”，负责workflow log path。
+参数：
+    workflow: WorkflowRun
+返回：Path。"""
     return _workflow_log_path_module(workflow, WORKFLOW_LOG_FILENAME, LEGACY_WORKFLOW_LOG_FILENAME)
 
 
-# 函数「_log」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _log(
     workflow: WorkflowRun,
     message: str,
@@ -626,11 +738,20 @@ def _log(
     level: str = "info",
     detail: str | None = None,
 ) -> None:
+    """内部辅助函数“_log”，负责log。
+参数：
+    workflow: WorkflowRun
+    message: str
+    stage: str | None
+    level: str
+    detail: str | None
+返回：None。"""
     _log_module(workflow, message, stage=stage, level=level, detail=detail, now=_now, log_filename=WORKFLOW_LOG_FILENAME, legacy_filename=LEGACY_WORKFLOW_LOG_FILENAME)
 
 
-# 函数「_load_persisted_runs」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _load_persisted_runs() -> None:
+    """内部辅助函数“_load_persisted_runs”，负责load persisted runs。
+返回：None。"""
     runs_dir = WORKSPACE_DIR / "runs"
     if not runs_dir.exists():
         return
@@ -657,12 +778,9 @@ def _load_persisted_runs() -> None:
             continue
 
 
-# 函数「_ensure_workflow_state」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _ensure_workflow_state(workflow: WorkflowRun) -> None:
-    """Backfill fields for checkpoints created before the staged runner."""
-    # Older checkpoints may contain model-generated diagnostics as topics.
-    # Re-apply the current boundary when loading them so a service restart (or
-    # an already-open UI) cannot keep displaying those pseudo-candidates.
+    """为分阶段执行器出现前创建的检查点补齐字段。"""
+    # 旧检查点可能把模型诊断文本误存成选题；加载时重新应用当前边界。
     changed = False
     original_topics = workflow.topics
     workflow.topics = _validate_topics(workflow.topics)
@@ -685,8 +803,11 @@ def _ensure_workflow_state(workflow: WorkflowRun) -> None:
         _checkpoint(workflow)
 
 
-# 函数「_fallback_topics」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _fallback_topics(seed: TopicSeed) -> list[Topic]:
+    """内部辅助函数“_fallback_topics”，负责fallback topics。
+参数：
+    seed: TopicSeed
+返回：list[Topic]。"""
     return [
         Topic(
             title="AI 编程 Agent 从演示走向日常生产",
@@ -715,12 +836,17 @@ def _fallback_topics(seed: TopicSeed) -> list[Topic]:
     ]
 
 
-# 函数「_fallback_hotspot_report」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _fallback_hotspot_report(
     seed: TopicSeed,
     topics: list[Topic],
     source_inventory: dict[str, int] | None = None,
 ) -> str:
+    """内部辅助函数“_fallback_hotspot_report”，负责fallback hotspot report。
+参数：
+    seed: TopicSeed
+    topics: list[Topic]
+    source_inventory: dict[str, int] | None
+返回：str。"""
     lines = [
         f"# 热点监控报告：{seed.domain}",
         "",
@@ -748,8 +874,12 @@ def _fallback_hotspot_report(
     return "\n".join(lines)
 
 
-# 函数「_parse_topics」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _parse_topics(raw: str, seed: TopicSeed) -> list[Topic]:
+    """内部辅助函数“_parse_topics”，负责parse topics。
+参数：
+    raw: str
+    seed: TopicSeed
+返回：list[Topic]。"""
     try:
         payload = json.loads(raw)
         if isinstance(payload, dict):
@@ -760,15 +890,17 @@ def _parse_topics(raw: str, seed: TopicSeed) -> list[Topic]:
     return topics[:5]
 
 
-# 函数「_verified_topics」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _verified_topics(topics: list[Topic]) -> list[Topic]:
+    """内部辅助函数“_verified_topics”，负责verified topics。
+参数：
+    topics: list[Topic]
+返回：list[Topic]。"""
     validated = _validate_topics(topics)
     return [topic for topic in validated if topic.verification_status == "verified"]
 
 
-# 函数「create_workflow」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def create_workflow(seed: TopicSeed, viral_analysis: ViralAnalysisConfig | None = None) -> WorkflowRun:
-    """Create and persist a queued run without doing any work yet."""
+    """创建并持久化排队状态的工作流，不立即执行任何阶段。"""
     run_id = uuid4().hex[:12]
     run_dir = WORKSPACE_DIR / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -794,8 +926,11 @@ def create_workflow(seed: TopicSeed, viral_analysis: ViralAnalysisConfig | None 
     return workflow
 
 
-# 函数「next_workflow_stage」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def next_workflow_stage(workflow: WorkflowRun) -> str | None:
+    """函数“next_workflow_stage”，负责next workflow stage。
+参数：
+    workflow: WorkflowRun
+返回：str | None。"""
     if workflow.current_stage in WORKFLOW_STAGES:
         return workflow.current_stage
     active_stages = [
@@ -808,9 +943,8 @@ def next_workflow_stage(workflow: WorkflowRun) -> str | None:
     )
 
 
-# 函数「reset_workflow_from_stage」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def reset_workflow_from_stage(workflow: WorkflowRun, stage: str) -> None:
-    """Reset a stage and all downstream outputs, retaining upstream work."""
+    """重置指定阶段及其所有下游产物，同时保留上游结果。"""
     if stage not in WORKFLOW_STAGES:
         raise ValueError(f"未知流水线阶段：{stage}")
     index = WORKFLOW_STAGES.index(stage)
@@ -820,8 +954,7 @@ def reset_workflow_from_stage(workflow: WorkflowRun, stage: str) -> None:
         )
         workflow.outputs = [output for output in workflow.outputs if output.agent_id != downstream]
     if stage == "hotspot_monitor":
-        # A hotspot rerun must fetch fresh candidates; later-stage reruns keep
-        # the already selected and verified topic list.
+        # 重跑热点阶段时重新抓取候选；后续阶段重跑则复用已选且已核验的选题。
         workflow.topics = []
         workflow.selected_topic_title = None
         workflow.source_status.pop("news-aggregator", None)
@@ -834,8 +967,12 @@ def reset_workflow_from_stage(workflow: WorkflowRun, stage: str) -> None:
     _checkpoint(workflow)
 
 
-# 异步函数「scout_topics」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def scout_topics(seed: TopicSeed, settings: Settings) -> tuple[list[Topic], AgentOutput]:
+    """函数“scout_topics”，负责scout topics。
+参数：
+    seed: TopicSeed
+    settings: Settings
+返回：tuple[list[Topic], AgentOutput]。"""
     run_dir = WORKSPACE_DIR / "runs" / f"radar-{uuid4().hex[:12]}"
     run_dir.mkdir(parents=True, exist_ok=True)
     raw_items: list[dict] = []
@@ -881,8 +1018,6 @@ async def scout_topics(seed: TopicSeed, settings: Settings) -> tuple[list[Topic]
     try:
         result = await _await_with_optional_timeout(gateway.complete(
         system=(
-    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
             prompt_contract +
             "你是热讯工坊的热点监控员。你只输出 JSON，不输出解释。"
             "字段必须是 topics 数组，每个元素包含 title, heat, source_hint, sources, "
@@ -911,9 +1046,7 @@ async def scout_topics(seed: TopicSeed, settings: Settings) -> tuple[list[Topic]
     if not topics:
         raise RuntimeError("热点监控员没有基于公开实时结果返回有效热点，已拒绝展示模型记忆内容")
     _augment_topic_sources(topics, raw_items)
-    # A topic must be grounded in at least one fetched item relevant to the
-    # requested direction.  This blocks model-generated "all sources were
-    # unrelated" diagnostics from leaking into the candidate list.
+    # 选题必须至少由一条与任务方向相关的抓取结果支撑，防止诊断文本进入候选列表。
     evidence_by_url = {str(item.get("url") or "").strip(): item for item in raw_items}
     topics = [
         topic
@@ -931,8 +1064,12 @@ async def scout_topics(seed: TopicSeed, settings: Settings) -> tuple[list[Topic]
     return topics, output
 
 
-# 异步函数「generate_script」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def generate_script(request: GenerateScriptRequest, settings: Settings) -> AgentOutput:
+    """函数“generate_script”，负责generate script。
+参数：
+    request: GenerateScriptRequest
+    settings: Settings
+返回：AgentOutput。"""
     run_id = f"script-{uuid4().hex[:8]}"
     run_dir = WORKSPACE_DIR / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -969,28 +1106,27 @@ async def generate_script(request: GenerateScriptRequest, settings: Settings) ->
     return _output(run_dir, "copywriter", "短视频脚本", _clean_script_output(result.content, request.duration_seconds))
 
 
-# 函数「_clean_script_output」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _clean_script_output(content: str, duration_seconds: int) -> str:
-    """Remove assistant meta-talk and make the requested duration explicit."""
+    """移除助手元话术，并明确标注请求的成片时长。"""
     text = content.strip()
-    # Model responses sometimes append an offer to do more work. It is not
-    # part of a publishable script and must never reach downstream agents.
+    # 模型有时会在末尾追加“可以继续帮你……”之类的话；这不是可发布脚本，不能传给下游员工。
     text = re.split(
         r"(?m)^\s*(?:如你愿意|如果你需要|我也可以|如需我|以上脚本之外)",
         text,
         maxsplit=1,
     )[0].rstrip()
-    # Keep a stable duration contract even when a model omits it from the
-    # heading. Do not rewrite spoken copy or invent additional facts.
-    # If the model supplied a timeline with a different endpoint, scale only
-    # mm:ss labels so the final segment lands on the requested duration.
+    # 即使模型标题没有写时长，也要保持稳定的时长契约；不改写口播内容，也不凭空补充事实。
+    # 如果模型给出的时间轴终点不同，只缩放 mm:ss 标签，使最后一段落在目标时长。
     stamps = list(re.finditer(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)", text))
     if len(stamps) >= 2:
         last_seconds = int(stamps[-1].group(1)) * 60 + int(stamps[-1].group(2))
         if last_seconds > 0 and abs(last_seconds - duration_seconds) >= 3:
             scale = duration_seconds / last_seconds
-            # 函数「replace_stamp」负责完成该步骤的输入处理、核心逻辑和结果返回。
             def replace_stamp(match: re.Match[str]) -> str:
+                """函数“replace_stamp”，负责replace stamp。
+参数：
+    match: re.Match[str]
+返回：str。"""
                 current = int(match.group(1)) * 60 + int(match.group(2))
                 adjusted = max(0, round(current * scale))
                 return f"{adjusted // 60}:{adjusted % 60:02d}"
@@ -1000,14 +1136,11 @@ def _clean_script_output(content: str, duration_seconds: int) -> str:
     return text
 
 
-# 函数「_video_edit_fallback」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _video_edit_fallback(subject: str, script: str, settings: dict[str, object] | None = None) -> str:
-    """Return a usable edit brief even when the model is unavailable.
+    """模型不可用时也生成可执行的剪辑执行单。
 
-    The editor's output is consumed by a person (or MoneyPrinterTurbo), so a
-    generic ``please provide a script`` response is not an acceptable result.
-    Keep the contract deterministic and make the input script visible for
-    traceability.
+    编辑结果会被人工或 MoneyPrinterTurbo 直接使用，不能只返回“请提供脚本”。
+    执行单保持确定性，并保留输入脚本以便追溯。
     """
     options = settings or {}
     fmt = str(options.get("format") or "vertical").lower()
@@ -1016,8 +1149,11 @@ def _video_edit_fallback(subject: str, script: str, settings: dict[str, object] 
     requirements = str(options.get("editing_requirements") or "字幕逐句跟随口播，关键词高亮").strip()
     duration = int(options.get("duration_seconds") or 110)
     duration = max(30, min(duration, 240))
-    # 函数「stamp」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def stamp(seconds: int) -> str:
+        """函数“stamp”，负责stamp。
+参数：
+    seconds: int
+返回：str。"""
         return f"{seconds // 60}:{seconds % 60:02d}"
     t1, t2, t3, t4 = min(8, duration), min(45, duration), min(85, duration), duration
     source = script.strip() or subject.strip() or "（未提供脚本，请按主题先制作占位版）"
@@ -1036,8 +1172,6 @@ def _video_edit_fallback(subject: str, script: str, settings: dict[str, object] 
 | {stamp(t1)}-{stamp(t2)} | 事实来源卡、主体画面、数据/图表 | 每句不超过两行，跟随口播出现 | 事实与推测使用不同颜色标签 |
 | {stamp(t2)}-{stamp(t3)} | 流程图、对比卡或操作录屏 | 按“第一/第二/第三”分段 | 用滑动/淡入转场，避免无依据画面 |
 | {stamp(t3)}-{stamp(t4)} | 总结卡 + 评论引导 | 收束观点和互动问题 | 音乐渐弱，保留 0.3 秒尾帧 |
-    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
 
 ## 字幕与配音
 - 字幕：白字黑描边，单条不超过 16 个汉字；事实、待验证、风险分别用颜色标记。
@@ -1064,8 +1198,12 @@ uv run --no-project --python 3.11.15 python mpt_agent.py --subject "{subject or 
 """
 
 
-# 函数「_ensure_video_edit_sections」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _ensure_video_edit_sections(content: str, fallback: str) -> str:
+    """内部辅助函数“_ensure_video_edit_sections”，负责ensure video edit sections。
+参数：
+    content: str
+    fallback: str
+返回：str。"""
     required = ("成片规格", "时间轴", "字幕", "配音", "素材", "MoneyPrinterTurbo", "验收")
     text = content.strip()
     if all(section in text for section in required):
@@ -1073,7 +1211,6 @@ def _ensure_video_edit_sections(content: str, fallback: str) -> str:
     return text + "\n\n---\n\n" + fallback
 
 
-# 异步函数「_append_video_generation」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def _append_video_generation(
     content: str,
     subject: str,
@@ -1082,7 +1219,7 @@ async def _append_video_generation(
     output_dir: str | None = None,
     video_aspect: str = "vertical",
 ) -> str:
-    """Run the installed MoneyPrinterTurbo helper and record its result.
+    """运行已安装的 MoneyPrinterTurbo 辅助程序并记录结果。
 
     The editor's primary deliverable is now a generated video.  We retain the
     execution plan in the artifact so a failed/credential-gated generation is
@@ -1109,8 +1246,7 @@ async def _append_video_generation(
     elif result.stderr.strip():
         lines.append("- 错误：" + result.stderr.strip()[-1200:])
     elif result.stdout.strip():
-        # Keep only the helper's concise status markers; never copy arbitrary
-        # credential-bearing configuration into the artifact.
+        # 只保留辅助程序的简短状态标记，禁止把可能含凭据的配置写入产物。
         markers = [line for line in result.stdout.splitlines() if line.startswith(("MPT_", "TASK_DIR=", "LOG_FILE="))]
         if markers:
             lines.append("- 详情：" + "；".join(markers))
@@ -1119,15 +1255,21 @@ async def _append_video_generation(
     return content + "\n" + "\n".join(lines) + "\n"
 
 
-# 函数「_looks_like_analysis_prompt」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _looks_like_analysis_prompt(content: str) -> bool:
+    """内部辅助函数“_looks_like_analysis_prompt”，负责looks like analysis prompt。
+参数：
+    content: str
+返回：bool。"""
     text = content.casefold()
     markers = ("你是爆款分析师", "严格输出", "请围绕用户提供", "不要直接写完整", "## 推荐角度")
     return sum(marker.casefold() in text for marker in markers) >= 2
 
 
-# 函数「_relevant_topic_sources」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _relevant_topic_sources(topic: Topic) -> list[SourceEvidence]:
+    """内部辅助函数“_relevant_topic_sources”，负责relevant topic sources。
+参数：
+    topic: Topic
+返回：list[SourceEvidence]。"""
     terms = {term for term in re.split(r"[^\w\u4e00-\u9fff]+", topic.title) if len(term) >= 2}
     primary = [source for source in topic.sources if topic.source_url and source.url == topic.source_url]
     relevant = [source for source in topic.sources if any(term.casefold() in (source.claim + source.name).casefold() for term in terms)]
@@ -1135,8 +1277,13 @@ def _relevant_topic_sources(topic: Topic) -> list[SourceEvidence]:
     return relevant[:8] or topic.sources[:2]
 
 
-# 函数「_viral_analysis_fallback」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _viral_analysis_fallback(topic: Topic, seed: TopicSeed, *, manual_content: str = "") -> str:
+    """内部辅助函数“_viral_analysis_fallback”，负责viral analysis fallback。
+参数：
+    topic: Topic
+    seed: TopicSeed
+    manual_content: str
+返回：str。"""
     facts = "\n".join(f"- {source.name}：{source.claim}" for source in _relevant_topic_sources(topic)) or "- 仅使用已核验选题中的事实，不补充来源之外的内容。"
     if _looks_like_analysis_prompt(manual_content):
         manual_content = "未提供具体爆款样本或分析结论；以下仅依据已核验选题生成施工图，不能宣称为数据驱动规律。"
@@ -1173,8 +1320,6 @@ def _viral_analysis_fallback(topic: Topic, seed: TopicSeed, *, manual_content: s
 {seed.duration_seconds} 秒口播，面向{seed.audience}，通俗、紧凑。
 """
     return f"""# 爆款分析：{topic.title}
-    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
 
 ## 样本依据
 未接入 SocialDataX 或其他平台样本；以下建议是针对本选题的创作假设，不代表平台总体规律。
@@ -1207,9 +1352,8 @@ def _viral_analysis_fallback(topic: Topic, seed: TopicSeed, *, manual_content: s
 """
 
 
-# 函数「_ensure_viral_analysis_sections」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _ensure_viral_analysis_sections(content: str, topic: Topic, seed: TopicSeed) -> str:
-    """Make the analyst contract explicit even when a model omits headings."""
+    """即使模型遗漏标题，也补齐爆款分析师要求的固定章节。"""
     required = ("推荐角度", "核心观点", "标题结构", "开头策略", "内容顺序", "必须包含的事实", "不能出现", "表达风格")
     missing = [section for section in required if section not in content]
     if not missing:
@@ -1220,9 +1364,8 @@ def _ensure_viral_analysis_sections(content: str, topic: Topic, seed: TopicSeed)
     )
 
 
-# 异步函数「run_agent」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def run_agent(agent_id: str, request: RunAgentRequest, settings: Settings) -> AgentOutput:
-    """Run one employee independently without creating a pipeline checkpoint."""
+    """独立执行一个员工，不创建流水线阶段检查点。"""
     if agent_id != request.agent_id:
         raise ValueError("员工 ID 不一致")
     if agent_id not in AGENT_BY_ID:
@@ -1253,15 +1396,12 @@ async def run_agent(agent_id: str, request: RunAgentRequest, settings: Settings)
         )
         return result
     if agent_id == "video_editor":
-        # This employee has a distinct deliverable contract.  Previously it
-        # fell through to the generic agent branch, which often produced a
-        # request for a script or a testing checklist instead of an edit plan.
+        # 该员工有独立的产物契约，不能落入通用分支，否则容易生成脚本或测试清单而不是剪辑执行单。
         edit_settings = request.settings or {}
         subject = str(edit_settings.get("topic") or "").strip()
         script = str(edit_settings.get("script") or "").strip()
         if prompt and not prompt.startswith("请根据当前工作台设置"):
-            # In the standalone workbench the task box is the most useful
-            # script input; retain the topic separately when supplied.
+            # 独立工作台中，任务输入框是最重要的脚本来源；如果单独提供主题则同时保留主题字段。
             script = script or prompt
         subject = subject or script[:80] or "未命名选题"
         duration = int(edit_settings.get("duration_seconds") or 110)
@@ -1309,8 +1449,6 @@ async def run_agent(agent_id: str, request: RunAgentRequest, settings: Settings)
             if _looks_like_analysis_prompt(manual_content):
                 manual_content = "检测到输入是角色提示词而非分析依据；请补充具体爆款样本、数据或你的分析结论。"
             fallback = f"""# 爆款分析师独立分析
-    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
 
 ## 用户手写分析依据
 {manual_content}
@@ -1393,17 +1531,20 @@ async def run_agent(agent_id: str, request: RunAgentRequest, settings: Settings)
     return _output(run_dir, agent_id, f"{agent.title}独立产物", result.content)
 
 
-# 函数「_ensure_standalone_viral_sections」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _ensure_standalone_viral_sections(content: str, fallback: str) -> str:
+    """内部辅助函数“_ensure_standalone_viral_sections”，负责ensure standalone viral sections。
+参数：
+    content: str
+    fallback: str
+返回：str。"""
     required = ("推荐角度", "核心观点", "标题结构", "开头策略", "内容顺序", "必须包含的事实", "不能出现", "表达风格")
     if all(section in content for section in required):
         return content.strip()
     return content.rstrip() + "\n\n---\n\n" + fallback
 
 
-# 函数「_write_operator_cover」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _write_operator_cover(topic: Topic, run_dir: Path) -> str:
-    """Create a deterministic 9:16 cover asset for the operator deliverable."""
+    """为运营产物生成确定性的 9:16 封面素材。"""
     cover_dir = run_dir / "operator"
     cover_dir.mkdir(parents=True, exist_ok=True)
     path = cover_dir / "cover.svg"
@@ -1432,9 +1573,8 @@ def _write_operator_cover(topic: Topic, run_dir: Path) -> str:
     return str(path.resolve())
 
 
-# 函数「_operator_fallback」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _operator_fallback(topic: Topic, cover_path: str | None = None) -> str:
-    """Return a complete operator plan with platform and evidence boundaries."""
+    """生成包含平台适配和证据边界的完整运营方案。"""
     topic_terms = {token.casefold() for token in re.findall(r"[\u4e00-\u9fffA-Za-z0-9]{2,}", topic.title)}
     sources = [
         source for source in (topic.sources or [])
@@ -1480,8 +1620,6 @@ def _operator_fallback(topic: Topic, cover_path: str | None = None) -> str:
 - 发布简介：戴尔预期上调是基础设施需求信号；本文只提供验证路径，不将单一公司表现等同于行业趋势。
 - 封面文件：{cover_path or '待生成'}
 - 封面规格：1080×1920（9:16），深蓝科技风；可直接上传或转 PNG 使用。
-    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
-    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
 
 ## 4. 评论与回复流程
 - 置顶问题：评论区报三个数：交付周期、单请求成本、订单兑现率。
@@ -1520,16 +1658,19 @@ def _operator_fallback(topic: Topic, cover_path: str | None = None) -> str:
 """
 
 
-# 函数「_ensure_operator_sections」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def _ensure_operator_sections(content: str, fallback: str, topic: Topic) -> str:
+    """内部辅助函数“_ensure_operator_sections”，负责ensure operator sections。
+参数：
+    content: str
+    fallback: str
+    topic: Topic
+返回：str。"""
     required = ("行业分析", "竞品分析", "账号设置", "30 天", "平台适配", "互动话术", "评论", "复盘", "来源", "核验")
     text = (content or "").strip()
-    # The operator artifact is consumed directly by users. If the model omits
-    # any required operational section, use the deterministic evidence-linked
-    # plan instead of returning a partial report.
+    # 运营产物会被用户直接执行；若模型遗漏必需章节，使用带证据链的确定性方案。
     if not text or sum(marker in text for marker in required) < len(required):
         return fallback
-    # No real distribution data is available; remove claims that imply results.
+    # 当前没有真实分发数据，因此删除暗示已取得效果的表述。
     if re.search(r"完播率|互动率|转化率|CTR|ROI|播放完成率|3秒留存|平均观看时长|点赞率|收藏率|转发率", text):
         return fallback
     if topic.source_url and topic.source_url not in text:
@@ -1540,7 +1681,6 @@ def _ensure_operator_sections(content: str, fallback: str, topic: Topic) -> str:
     return text.strip()
 
 
-# 异步函数「run_hot_video_workflow」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def run_hot_video_workflow(
     seed: TopicSeed,
     settings: Settings,
@@ -1549,7 +1689,7 @@ async def run_hot_video_workflow(
     viral_analysis: ViralAnalysisConfig | None = None,
     selected_topic_title: str | None = None,
 ) -> WorkflowRun:
-    """Run from the first incomplete checkpoint, optionally stopping after one stage."""
+    """从第一个未完成检查点继续执行，可选择在一个阶段后暂停。"""
     if stop_after_stage is not None and stop_after_stage not in WORKFLOW_STAGES:
         raise ValueError(f"未知流水线阶段：{stop_after_stage}")
 
@@ -1586,12 +1726,20 @@ async def run_hot_video_workflow(
     _log(workflow, "任务开始执行" if not existing else "从检查点继续执行")
     gateway = LlmGateway(settings)
 
-    # 函数「output_for」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def output_for(agent_id: str) -> AgentOutput | None:
+        """函数“output_for”，负责按员工 ID 查找产物。
+参数：
+    agent_id: str
+返回：AgentOutput | None。"""
         return next((item for item in workflow.outputs if item.agent_id == agent_id), None)
 
-    # 函数「save_output」负责完成该步骤的输入处理、核心逻辑和结果返回。
     def save_output(agent_id: str, title: str, content: str) -> AgentOutput:
+        """函数“save_output”，负责save output。
+参数：
+    agent_id: str
+    title: str
+    content: str
+返回：AgentOutput。"""
         current = output_for(agent_id)
         if current:
             return current
@@ -1659,10 +1807,7 @@ async def run_hot_video_workflow(
                         if not analysis_config.manual_content.strip():
                             raise RuntimeError("爆款分析已选择手动模式，但没有填写分析依据")
                         if _looks_like_analysis_prompt(analysis_config.manual_content):
-                            # Older checkpoints could have persisted the UI's
-                            # role prompt as manual content. Do not make a
-                            # stage rerun impossible; discard that invalid
-                            # input and fall back to the verified topic facts.
+                            # 旧检查点可能把界面角色提示词当作手写内容；丢弃这类无效输入，回退到已核验事实。
                             workflow.source_status["viral-analysis"] = "manual:invalid prompt ignored"
                             _log(workflow, "检测到旧的角色提示词，已忽略并按选题事实生成爆款分析", stage=stage, level="warning")
                             analyst_content = _viral_analysis_fallback(selected, seed)
@@ -1679,10 +1824,7 @@ async def run_hot_video_workflow(
                         transcript_errors: list[str] = []
                         if settings.socialdatax_api_key and settings.socialdatax_api_key.strip():
                             try:
-                                # First obtain the platform's highest-engagement
-                                # ranking, then search the selected topic for
-                                # comparable samples. Both passes complete
-                                # before the analyst is called.
+                                # 先获取平台高互动排行，再搜索选定主题的可比样本；两次采集都完成后才调用分析师。
                                 ranked_notes = await _run_socialdatax_note_search(
                                     f"{seed.domain} {seed.brief}", settings
                                 )
@@ -1719,9 +1861,7 @@ async def run_hot_video_workflow(
                                 "开头策略、内容顺序、必须包含的事实、不能出现、表达风格。"
                                 "你的职责是定角度、定结构、定规则，不替文案助手写成稿。"
                                 "SocialDataX 数据只是公开样本，互动量只能用于样本比较，不得编造缺失数据或平台总体结论。"
-    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
                                 "必须从全部输入样本中提取可复用的表达结构，并标明它们是样本观察而非事实。"
-    # 上半段结果在这里汇总，下面继续执行后续校验、转换或持久化。
                             ),
                             user=(
                                 f"请分析这个已核验选题：{selected.model_dump_json()}\n"
@@ -1803,10 +1943,7 @@ async def run_hot_video_workflow(
                         user=f"请根据脚本生成剪辑计划。成片画幅必须为 {canvas}：\n{script_content}",
                         fallback=edit_fallback,
                     )
-                    # Models occasionally answer with a generic request for
-                    # more information.  Enforce the same executable editor
-                    # contract used by standalone calls before persisting the
-                    # pipeline artifact.
+                    # 模型偶尔只返回泛化的补充信息请求；持久化前强制套用可执行的剪辑执行单结构。
                     pipeline_fallback = _video_edit_fallback(
                         selected.title,
                         script_content,
@@ -1900,18 +2037,21 @@ async def run_hot_video_workflow(
     return workflow
 
 
-# 函数「list_runs」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def list_runs() -> list[WorkflowRun]:
+    """函数“list_runs”，负责list runs。
+返回：list[WorkflowRun]。"""
     for workflow in RUNS.values():
         _ensure_workflow_state(workflow)
     return sorted(RUNS.values(), key=lambda run: run.created_at, reverse=True)
 
 
-# 函数「get_run」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def get_run(run_id: str) -> WorkflowRun | None:
+    """函数“get_run”，负责get run。
+参数：
+    run_id: str
+返回：WorkflowRun | None。"""
     workflow = RUNS.get(run_id)
     if workflow is not None:
-        # Keep API responses consistent for runs created before the diagnostic
-        # filtering was added (the UI may still have one open).
+        # 兼容增加诊断筛选前创建的旧任务，避免已打开的界面收到不同结构的响应。
         _ensure_workflow_state(workflow)
     return workflow

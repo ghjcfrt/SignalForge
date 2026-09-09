@@ -1189,6 +1189,7 @@ button {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
+  line-clamp: 4;
   overflow: hidden;
 }
 .queue-card-markdown > :first-child { margin-top: 0; }

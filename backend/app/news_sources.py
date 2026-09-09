@@ -1,3 +1,5 @@
+"""新闻 Skill、RSS 和本地 fixture 的统一来源适配。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -17,6 +19,7 @@ from backend.app.config import ROOT_DIR
 
 # 新闻来源模块负责 Skill、RSS 回退和本地 fixture 的读取。
 # 通过参数注入配置与日期解析器，避免与工作流编排模块形成循环依赖。
+# 未配置自定义来源时使用的默认 RSS 列表。
 DEFAULT_RSS_FEEDS = (
     ("BBC", "https://feeds.bbci.co.uk/news/rss.xml"),
     ("BBC 中文", "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"),
@@ -24,6 +27,10 @@ DEFAULT_RSS_FEEDS = (
 
 
 def configured_rss_feeds(configured_value: str | None) -> tuple[tuple[str, str], ...]:
+    """函数“configured_rss_feeds”：解析环境变量中配置的 RSS 地址列表。
+参数：
+    configured_value: str | None
+返回：tuple[tuple[str, str], ...]。"""
     configured = str(configured_value or "").strip()
     if not configured:
         return DEFAULT_RSS_FEEDS
@@ -43,6 +50,11 @@ def load_news_fixture(
     *,
     parse_datetime: Callable[[object], object],
 ) -> list[dict]:
+    """函数“load_news_fixture”：读取本地新闻 fixture 并规范化字段。
+参数：
+    path_value: str | None
+    parse_datetime: Callable[[object], object]
+返回：list[dict]。"""
     path = Path(path_value).expanduser() if path_value else ROOT_DIR / "tests" / "fixtures" / "hotspots.json"
     if not path.is_absolute():
         path = ROOT_DIR / path
@@ -72,6 +84,14 @@ async def run_news_skill(
     fetch_limit: int,
     parse_datetime: Callable[[object], object],
 ) -> list[dict]:
+    """函数“run_news_skill”：执行新闻聚合 Skill 并返回原始结果。
+参数：
+    timeout_seconds: int
+    fetch_path: Path
+    skill_dir: Path
+    fetch_limit: int
+    parse_datetime: Callable[[object], object]
+返回：list[dict]。"""
     command = [
         sys.executable,
         str(fetch_path),
@@ -126,18 +146,26 @@ async def run_builtin_news_aggregator(
     fetch_limit: int,
     parse_datetime: Callable[[object], object],
 ) -> list[dict]:
-    """Keep the radar usable when the optional news skill is not installed."""
+    """在可选新闻 Skill 未安装时，仍通过内置来源保持热点雷达可用。"""
     timeout = None if timeout_seconds <= 0 else timeout_seconds
 
-    # 异步函数「fetch_feed」负责完成该步骤的输入处理、核心逻辑和结果返回。
     async def fetch_feed(client: httpx.AsyncClient, name: str, url: str) -> list[dict]:
+        """函数“fetch_feed”：请求一个 RSS 地址并解析其中的条目。
+参数：
+    client: httpx.AsyncClient
+    name: str
+    url: str
+返回：list[dict]。"""
         response = await client.get(url)
         response.raise_for_status()
         root = ElementTree.fromstring(response.content)
         items: list[dict] = []
         for item in root.findall(".//item")[:fetch_limit]:
-            # 函数「text」负责完成该步骤的输入处理、核心逻辑和结果返回。
             def text(tag: str) -> str:
+                """函数“text”：提取 XML 节点文本并去除首尾空白。
+参数：
+    tag: str
+返回：str。"""
                 return (item.findtext(tag) or "").strip()
             published = parse_datetime(text("pubDate"))
             link = text("link")
@@ -180,6 +208,17 @@ async def run_news_aggregator(
     fetch_limit: int,
     parse_datetime: Callable[[object], object],
 ) -> list[dict]:
+    """函数“run_news_aggregator”：按配置选择 Skill、RSS 或 fixture 新闻来源。
+参数：
+    timeout_seconds: int | None
+    source_mode: str
+    fixture_path: str | None
+    fetch_path: Path
+    skill_dir: Path
+    rss_feeds: tuple[tuple[str, str], ...]
+    fetch_limit: int
+    parse_datetime: Callable[[object], object]
+返回：list[dict]。"""
     mode = str(source_mode or "live_then_fixture").strip().lower()
     if mode == "fixture":
         return load_news_fixture(fixture_path, parse_datetime=parse_datetime)

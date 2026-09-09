@@ -1,4 +1,4 @@
-"""Deterministic end-to-end smoke test for the five-stage hot-video workflow."""
+"""五阶段热点视频工作流的确定性端到端冒烟测试。"""
 
 import asyncio
 import json
@@ -14,18 +14,31 @@ from backend.app.schemas import TopicSeed, ViralAnalysisConfig
 
 
 class _Completion:
-    # 函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    """数据模型或服务类“_Completion”，封装相关状态与行为。"""
     def __init__(self, content: str):
+        """内部辅助函数“__init__”，负责init。
+参数：
+    content: str
+返回：未标注。"""
         self.content = content
 
 
 class _Gateway:
-    # 函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    """数据模型或服务类“_Gateway”，封装相关状态与行为。"""
     def __init__(self, _settings):
+        """内部辅助函数“__init__”，负责init。
+参数：
+    _settings: 未标注
+返回：未标注。"""
         pass
 
-    # 异步函数「complete」负责完成该步骤的输入处理、核心逻辑和结果返回。
     async def complete(self, system: str, user: str, fallback: str):
+        """函数“complete”，负责complete。
+参数：
+    system: str
+    user: str
+    fallback: str
+返回：未标注。"""
         if "热点监控员" in system:
             return _Completion(
                 json.dumps(
@@ -60,8 +73,11 @@ class _Gateway:
         return _Completion(fallback)
 
 
-# 异步函数「_fixture_news」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def _fixture_news(_timeout=None):
+    """内部辅助函数“_fixture_news”，负责fixture news。
+参数：
+    _timeout: 未标注
+返回：未标注。"""
     now = int(time.time())
     return [
         {"title": "Smoke test: AI workflow", "url": "https://fixture-a.example/topic", "source": "Fixture A", "summary": "Fixture fact A", "pubdate": now},
@@ -69,8 +85,9 @@ async def _fixture_news(_timeout=None):
     ]
 
 
-# 异步函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 async def main() -> None:
+    """函数“main”，负责main。
+返回：None。"""
     original_gateway = workflows.LlmGateway
     original_news = workflows._run_news_aggregator
     workflows.LlmGateway = _Gateway

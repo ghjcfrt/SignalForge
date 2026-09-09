@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { HeartHandshake, MessageCircle } from "lucide-react";
 import type { Agent, EngagementComment } from "../types";
 
+/** 合并条件样式名并过滤空值。 */
 function cn(...classes: Array<string | false | null | undefined>) { return classes.filter(Boolean).join(" "); }
 
 const initialComments: EngagementComment[] = [
@@ -11,13 +12,12 @@ const initialComments: EngagementComment[] = [
   { id: "c-104", author: "晚风", content: "看完视频感觉被理解了，谢谢你们认真做这样的内容。", source: "视频评论区 · 《给低能量的你》", time: "36 分钟前", category: "情绪支持", assignedAgentId: "healer", priority: "普通", status: "待回复" }
 ];
 
-// 函数「EngagementView」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 互动管理页面，展示并发送评论回复。 */
 export default function EngagementView({ agents }: { agents: Agent[] }) {
   const [comments, setComments] = useState(initialComments);
   const [selectedId, setSelectedId] = useState(initialComments[0].id);
   const [draft, setDraft] = useState("");
   const selected = comments.find((comment) => comment.id === selectedId) ?? comments[0];
-  // 函数「agentName」负责完成该界面的状态处理、交互逻辑或数据转换。
   const agentName = (id: string) => agents.find((agent) => agent.id === id)?.title ?? id;
 
   useEffect(() => {
@@ -25,7 +25,7 @@ export default function EngagementView({ agents }: { agents: Agent[] }) {
     setDraft(selected.status === "已回复" ? "已完成回复，可继续编辑" : selected.category === "情绪支持" ? "听起来你最近承受了不少压力，谢谢你愿意把这份感受说出来。可以先从今天最困扰你的一个小片段开始，给自己一点喘息的空间；如果这种疲惫持续影响生活，也建议找专业咨询师聊聊。" : "感谢你的留言，我们会把这个问题记录下来并持续完善。你也可以告诉我们更具体的使用场景。 ");
   }, [selectedId, selected?.status, selected?.category]);
 
-  // 函数「sendReply」负责完成该界面的状态处理、交互逻辑或数据转换。
+  /** 提交一条互动回复并刷新回复状态。 */
   function sendReply() {
     if (!selected || !draft.trim() || selected.status === "已回复") return;
     setComments((items) => items.map((item) => item.id === selected.id ? { ...item, status: "已回复" } : item));

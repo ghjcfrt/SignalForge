@@ -1,3 +1,5 @@
+/** 应用主界面、工作流状态管理和页面路由。 */
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -91,6 +93,7 @@ import { ShellNav as ShellNavComponent, TopBar as TopBarComponent, SettingsStrip
 type ViewId = (typeof navItems)[number]["id"];
 type AgentTaskStatus = "idle" | "running" | "completed" | "failed";
 
+// 员工任务状态到界面文案的映射。
 const agentTaskStatusText: Record<AgentTaskStatus, string> = {
   idle: "待调用",
   running: "执行中",
@@ -106,6 +109,7 @@ const defaultSeed: TopicSeed = {
   video_aspect: "vertical"
 };
 
+// 设置页表单的默认超时值。
 const defaultTimeoutSettings: TimeoutSettings = {
   news_fetch_timeout_seconds: 90,
   model_timeout_seconds: 30,
@@ -123,23 +127,21 @@ const statusText = {
   "local-template": "本地模板"
 };
 
-// 函数「cn」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 合并条件样式名并过滤空值。 */
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-/** Render model-produced Markdown consistently across every result surface. */
-// 函数「MarkdownContent」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 将模型生成的 Markdown 统一渲染到所有结果区域。 */
 const renderMarkdown = (content: string, className?: string) => <MarkdownContent content={content} className={className} />;
 
-// A stale browser snapshot can outlive the backend filter. Keep collection
-// diagnostics out of the visible candidate cards until the server refreshes.
-// 函数「isDiagnosticTopic」负责完成该界面的状态处理、交互逻辑或数据转换。
+// 浏览器快照可能晚于后端筛选结果；服务端刷新前不在候选卡片中展示采集诊断信息。
 function isDiagnosticTopic(topic: Topic): boolean {
   const text = `${topic.title} ${topic.source_hint} ${topic.angle}`.toLowerCase();
   return /(缺乏可用来源|不构成.{0,12}(热点|候选)|本批次|仅检测到|未出现|来源不足|模型未返回|报错|(?:执行|请求|抓取|来源|模型|搜索|接口).{0,8}(?:失败|错误|超时)|(?:失败|错误|超时).{0,8}(?:执行|请求|抓取|来源|模型|搜索|接口)|\b(error|failed|failure|exception|timeout)\b)/i.test(text);
 }
 
+/** 从 localStorage 读取 JSON，失败时返回默认值。 */
 function readSaved<T>(key: string, fallback: T): T {
   try {
     const value = window.localStorage.getItem(key);
@@ -149,12 +151,11 @@ function readSaved<T>(key: string, fallback: T): T {
   }
 }
 
-// 函数「readSavedRun」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 读取浏览器中保存的当前工作流快照。 */
 function readSavedRun(): WorkflowRun | null {
   const saved = readSaved<WorkflowRun | null>("signalforge.currentRun", null);
   if (!saved || saved.status !== "running") return saved;
-  // A browser snapshot cannot prove that a server task is still alive.
-  // Treat an old running snapshot as resumable until the server refresh wins.
+  // 浏览器快照不能证明服务端任务仍在运行；在服务端状态覆盖前，将旧快照视为可恢复。
   return {
     ...saved,
     status: "failed",
@@ -164,13 +165,13 @@ function readSavedRun(): WorkflowRun | null {
   };
 }
 
-// 函数「readSavedView」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 读取浏览器中保存的当前页面视图。 */
 function readSavedView(): ViewId {
   const saved = readSaved<string>("signalforge.activeView", "overview");
   return navItems.some((item) => item.id === saved) ? saved as ViewId : "overview";
 }
 
-// 函数「readViralAnalysis」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 读取浏览器中保存的爆款分析配置。 */
 function readViralAnalysis(): ViralAnalysisConfig {
   const saved = readSaved<Partial<ViralAnalysisConfig>>("signalforge.viralAnalysis", {});
   return {
@@ -229,12 +230,12 @@ const employeeIds = [
   "healer"
 ] as const;
 
-// 函数「employeeIdFromView」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 把页面视图 ID 映射为员工 ID。 */
 function employeeIdFromView(view: ViewId): string | null {
   return view.startsWith("agent_") ? view.slice("agent_".length) : null;
 }
 
-// 函数「formatWorkflowError」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 把工作流错误和阶段信息整理为可读文本。 */
 function formatWorkflowError(run: WorkflowRun, fallback = "") {
   let detail = run.error || fallback;
   if (run.current_stage) {
@@ -248,7 +249,7 @@ function formatWorkflowError(run: WorkflowRun, fallback = "") {
   return detail.replace(/来源状态：\s*/, "来源状态：\n").replace(/;\s+/g, "\n");
 }
 
-// 函数「ShellNav」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 执行前端界面逻辑。 */
 function ShellNav({
   activeView,
   onViewChange,
@@ -280,7 +281,6 @@ function ShellNav({
     if (moreViewIds.has(activeView)) setMoreOpen(true);
   }, [activeView]);
 
-  // 函数「renderNavItem」负责完成该界面的状态处理、交互逻辑或数据转换。
   const renderNavItem = (item: (typeof navItems)[number], subItem = false) => {
     const Icon = item.icon;
     return (
@@ -306,7 +306,7 @@ function ShellNav({
           <span>AI 一人公司</span>
         </div>
       </div>
-      {/* 中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。 */}
+
 
       <div className="nav-scroll-area">
         <nav className="nav-list" aria-label="主导航">
@@ -350,7 +350,7 @@ function ShellNav({
   );
 }
 
-// 函数「TopBar」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 执行前端界面逻辑。 */
 function TopBar({
   activeView,
   status,
@@ -388,7 +388,7 @@ function TopBar({
   );
 }
 
-// 函数「PipelineBoard」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 执行前端界面逻辑。 */
 function PipelineBoard({ run, running, onNew, onStep, onCancel, onRerun, onOpenArtifacts }: { run: WorkflowRun | null; running: boolean; onNew: () => void; onStep: () => void; onCancel: () => void; onRerun: (stage: string) => void; onOpenArtifacts: () => void }) {
   const completedIds = new Set(run?.outputs.map((output) => output.agent_id) ?? []);
   const stageStatus = run?.stage_status ?? {};
@@ -432,7 +432,7 @@ function PipelineBoard({ run, running, onNew, onStep, onCancel, onRerun, onOpenA
           {run.log_file && <small className="log-path">日志文件：{run.log_file}</small>}
         </details>
       ) : null}
-      {/* 中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。 */}
+
 
       <div className="pipeline-grid">
         {pipeline.map((stage, index) => {
@@ -463,7 +463,7 @@ function PipelineBoard({ run, running, onNew, onStep, onCancel, onRerun, onOpenA
   );
 }
 
-// 函数「SeedPanel」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 执行前端界面逻辑。 */
 function SeedPanel({
   seed,
   onChange
@@ -519,7 +519,7 @@ function SeedPanel({
   );
 }
 
-// 函数「AgentRoster」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 执行前端界面逻辑。 */
 function AgentRoster({ agents }: { agents: Agent[] }) {
   const pipelineIds = new Set(pipeline.map((stage) => stage.agentId));
   const groups = [
@@ -559,9 +559,8 @@ function AgentRoster({ agents }: { agents: Agent[] }) {
   );
 }
 
-// 函数「TopicList」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 执行前端界面逻辑。 */
 function TopicList({ run, topics, selectable, selectedTitle, onSelect }: { run?: WorkflowRun | null; topics?: Topic[]; selectable?: boolean; selectedTitle?: string | null; onSelect?: (title: string | null) => void }) {
-  // 函数「items」负责完成该界面的状态处理、交互逻辑或数据转换。
   const items = (topics ?? run?.topics ?? []).filter((topic) => !isDiagnosticTopic(topic));
   return (
     <section className="panel topics-panel">
@@ -598,9 +597,8 @@ function TopicList({ run, topics, selectable, selectedTitle, onSelect }: { run?:
   );
 }
 
-// 函数「OutputList」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 执行前端界面逻辑。 */
 function OutputList({ outputs }: { outputs: AgentOutput[] }) {
-  // 函数「agentTitle」负责完成该界面的状态处理、交互逻辑或数据转换。
   const agentTitle = (agentId: string) => {
     const pipelineStage = pipeline.find((stage) => stage.agentId === agentId);
     if (pipelineStage) return pipelineStage.title;
@@ -642,7 +640,7 @@ function OutputList({ outputs }: { outputs: AgentOutput[] }) {
   );
 }
 
-// 函数「SettingsStrip」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 执行前端界面逻辑。 */
 function SettingsStrip({ status, collapsed, onToggle }: { status: ApiStatus | null; collapsed: boolean; onToggle: () => void }) {
   return (
     <section className={cn("settings-strip", collapsed && "collapsed")} aria-label="AI 运行状态">
@@ -659,7 +657,7 @@ function SettingsStrip({ status, collapsed, onToggle }: { status: ApiStatus | nu
   );
 }
 
-// 函数「RadarView」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 执行前端界面逻辑。 */
 function RadarView({ topics, seed, onChange, onRun, running }: {
   topics: Topic[];
   seed: TopicSeed;
@@ -700,7 +698,7 @@ function RadarView({ topics, seed, onChange, onRun, running }: {
   );
 }
 
-// 函数「EditingQueueView」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 执行前端界面逻辑。 */
 function EditingQueueView({ outputs, seed }: { outputs: AgentOutput[]; seed: TopicSeed }) {
   const editingOutputs = outputs.filter((output) => ["video_editor", "operator"].includes(output.agent_id));
   const [mptStatus, setMptStatus] = useState<MoneyPrinterTurboStatus | null>(null);
@@ -716,6 +714,7 @@ function EditingQueueView({ outputs, seed }: { outputs: AgentOutput[]; seed: Top
   const script = outputs.find((output) => output.agent_id === "copywriter");
   const subject = script?.content ?? seed.brief;
 
+  /** 执行前端界面逻辑。 */
   async function handleMptRun() {
     setMptRunning(true);
     setMptResult(null);
@@ -756,7 +755,7 @@ function EditingQueueView({ outputs, seed }: { outputs: AgentOutput[]; seed: Top
         </div>
         {!!missingEnv.length && (
           <div className="missing-env">
-            {/* 中段开始整理状态和派生数据，再交给后续渲染或提交逻辑。 */}
+
             <AlertCircle size={16} />
             <div>
               <strong>真实成片需要配置以下服务：</strong>
@@ -814,7 +813,7 @@ function EditingQueueView({ outputs, seed }: { outputs: AgentOutput[]; seed: Top
   );
 }
 
-// 函数「AgentsView」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 执行前端界面逻辑。 */
 function AgentsView({ agents }: { agents: Agent[] }) {
   return (
     <section className="panel agent-detail-panel">
@@ -858,8 +857,7 @@ function AgentsView({ agents }: { agents: Agent[] }) {
   );
 }
 
-// 函数「SettingsView」负责完成该界面的状态处理、交互逻辑或数据转换。
-// 函数「OverviewView」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 执行前端界面逻辑。 */
 function OverviewView({
   run,
   running,
@@ -907,7 +905,7 @@ function OverviewView({
   );
 }
 
-// 函数「App」负责完成该界面的状态处理、交互逻辑或数据转换。
+/** 应用根组件，协调导航、工作流状态和各员工工作台。 */
 export default function App() {
   const [activeView, setActiveView] = useState<ViewId>(readSavedView);
   const [status, setStatus] = useState<ApiStatus | null>(null);
@@ -926,11 +924,9 @@ export default function App() {
   const [systemStatusSnapshot, setSystemStatusSnapshot] = useState<SystemStatus | null>(null);
   const [settingsStripCollapsed, setSettingsStripCollapsed] = useState(false);
 
-  // Keep local service state warm while the app is open, instead of waiting
-  // for the Settings view to mount and issuing its first expensive query.
+  // 应用打开期间预热本地服务状态，避免设置页挂载后才发起首次昂贵查询。
   useEffect(() => {
     let disposed = false;
-    // 函数「refresh」负责完成该界面的状态处理、交互逻辑或数据转换。
     const refresh = () => {
       fetchSystemStatus().then((next) => {
         if (!disposed) setSystemStatusSnapshot(next);
@@ -972,8 +968,7 @@ export default function App() {
   }, [activeView]);
   useEffect(() => { window.localStorage.setItem("signalforge.employee.outputs", JSON.stringify(agentOutputs)); }, [agentOutputs]);
 
-  // Standalone workbench results are project artifacts as well as a local
-  // cache, so importing/loading a project restores them into each workbench.
+  // 独立工作台结果既是项目资产也是本地缓存，导入或加载项目时要恢复到各个工作台。
   useEffect(() => {
     if (!run?.standalone_outputs?.length) return;
     setAgentOutputs((current) => {
@@ -987,6 +982,7 @@ export default function App() {
     return run?.outputs ?? [];
   }, [run]);
 
+  /** 执行前端界面逻辑。 */
   async function refreshBackendData(options: { showErrors?: boolean } = {}) {
     try {
       const [apiStatus, apiAgents] = await Promise.all([fetchStatus(), fetchAgents()]);
@@ -1005,8 +1001,7 @@ export default function App() {
   useEffect(() => {
     refreshBackendData();
     fetchWorkflows().then((items) => {
-      // Do not let the initial list request overwrite a project that the user
-      // has just imported in the settings view.
+      // 初次列表请求不能覆盖用户刚在设置页导入的项目。
       if (items.length && !importedRunRef.current) setRun(items[0]);
     }).catch(() => undefined);
   }, []);
@@ -1037,6 +1032,7 @@ export default function App() {
     }
   }, [run?.status, run?.error, run?.current_stage]);
 
+  /** 执行前端界面逻辑。 */
   async function waitForRun(initial: WorkflowRun): Promise<WorkflowRun> {
     let current = initial;
     setRun(current);
@@ -1048,20 +1044,19 @@ export default function App() {
     return current;
   }
 
-  // 函数「showRunError」负责完成该界面的状态处理、交互逻辑或数据转换。
+  /** 展示工作流执行失败信息并更新界面状态。 */
   function showRunError(result: WorkflowRun, fallback: string) {
     if (result.status === "failed") {
       setError(formatWorkflowError(result, fallback));
     }
   }
 
+  /** 执行前端界面逻辑。 */
   async function handleSingleAgent(agentId: string, prompt: string, settings: Record<string, unknown>) {
     setAgentTaskStatuses((current) => ({ ...current, [agentId]: "running" }));
     setAgentErrors((current) => ({ ...current, [agentId]: null }));
     try {
-      // A standalone run still belongs to a project. If the user opened an
-      // employee workbench before creating a console task, create a paused
-      // project checkpoint first so this result can be exported.
+      // 独立运行仍属于项目；若用户先打开员工工作台，先创建暂停检查点以便导出结果。
       let project = run;
       if (!project) {
         project = await runHotVideoWorkflow(seed, "manual", viralAnalysis);
@@ -1087,6 +1082,7 @@ export default function App() {
     }
   }
 
+  /** 执行前端界面逻辑。 */
   async function handleRun() {
     setRunning(true);
     setError(null);
@@ -1103,6 +1099,7 @@ export default function App() {
     }
   }
 
+  /** 执行前端界面逻辑。 */
   async function handleResume() {
     if (!run) return;
     setRunning(true);
@@ -1117,6 +1114,7 @@ export default function App() {
     }
   }
 
+  /** 执行前端界面逻辑。 */
   async function handleStep() {
     setRunning(true);
     setError(null);
@@ -1132,6 +1130,7 @@ export default function App() {
     }
   }
 
+  /** 执行前端界面逻辑。 */
   async function handleRerun(stage: string) {
     if (!run) return;
     setRunning(true);
@@ -1146,17 +1145,17 @@ export default function App() {
     }
   }
 
-  // 函数「handleSelectTopic」负责完成该界面的状态处理、交互逻辑或数据转换。
+  /** 更新当前选题并同步到工作流检查点。 */
   function handleSelectTopic(title: string | null) {
     setSelectedTopicTitle(title);
     setRun((current) => current ? { ...current, selected_topic_title: title } : current);
   }
 
+  /** 执行前端界面逻辑。 */
   async function handleNewTask() {
     setError(null);
     try {
-      // Creating a task only persists a checkpoint. Nothing starts until the
-      // user explicitly clicks the run button (or executes the next step).
+      // 创建任务只保存检查点；用户明确点击运行或执行下一步后才会启动。
       const result = await runHotVideoWorkflow(seed, "manual", viralAnalysis);
       setRun(result);
     } catch (err) {
@@ -1164,6 +1163,7 @@ export default function App() {
     }
   }
 
+  /** 执行前端界面逻辑。 */
   async function handleCancel() {
     if (!run || !running) return;
     try {
@@ -1177,6 +1177,7 @@ export default function App() {
     }
   }
 
+  /** 执行前端界面逻辑。 */
   async function handleRadarScan() {
     setRunning(true);
     setError(null);
@@ -1190,12 +1191,12 @@ export default function App() {
     }
   }
 
+  /** 执行前端界面逻辑。 */
   async function handleOpenArtifacts() {
     setError(null);
     try {
       const result = await openArtifactsFolder();
-      // Keep the path available in the console when the native file manager
-      // cannot be launched (for example on a headless development host).
+      // 本机文件管理器无法启动时（例如无图形开发主机），仍在控制台保留路径。
       setError(null);
       void result;
     } catch (err) {
@@ -1203,6 +1204,7 @@ export default function App() {
     }
   }
 
+  /** 执行前端界面逻辑。 */
   async function handleShutdown() {
     if (!window.confirm("将同时关闭前端和后端服务，当前页面也会随之关闭。确定继续吗？")) {
       return;
@@ -1212,8 +1214,7 @@ export default function App() {
     try {
       await shutdownAll();
     } catch {
-      // The frontend exits shortly after the shutdown command, so a dropped
-      // connection is expected and should not prevent the local processes from stopping.
+      // 前端会在关停命令后很快退出，连接中断是预期行为，不应阻止本地进程停止。
     } finally {
       setClosing(false);
       setShutdownComplete(true);

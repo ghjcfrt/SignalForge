@@ -1,3 +1,5 @@
+"""SignalForge API 和工作流契约的异步冒烟测试。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -12,16 +14,20 @@ from backend.app.schemas import AgentOutput, TopicSeed
 
 
 class ApiSmokeTests(unittest.IsolatedAsyncioTestCase):
-    # 异步函数「asyncSetUp」负责完成该步骤的输入处理、核心逻辑和结果返回。
+    """数据模型或服务类“ApiSmokeTests”，封装相关状态与行为。"""
     async def asyncSetUp(self) -> None:
+        """函数“asyncSetUp”，负责asyncSetUp。
+返回：None。"""
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test")
 
-    # 异步函数「asyncTearDown」负责完成该步骤的输入处理、核心逻辑和结果返回。
     async def asyncTearDown(self) -> None:
+        """函数“asyncTearDown”，负责asyncTearDown。
+返回：None。"""
         await self.client.aclose()
 
-    # 异步函数「test_health_agents_and_every_employee_workbench」负责完成该步骤的输入处理、核心逻辑和结果返回。
     async def test_health_agents_and_every_employee_workbench(self) -> None:
+        """函数“test_health_agents_and_every_employee_workbench”，负责test health agents and every employee workbench。
+返回：None。"""
         response = await self.client.get("/api/health")
         self.assertEqual(response.status_code, 200)
         agents = (await self.client.get("/api/agents")).json()
@@ -31,8 +37,13 @@ class ApiSmokeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("libraries", stock_health.json())
         original = main.run_agent
 
-        # 异步函数「fake_run」负责完成该步骤的输入处理、核心逻辑和结果返回。
         async def fake_run(agent_id, request, settings):
+            """函数“fake_run”，负责fake run。
+参数：
+    agent_id: 未标注
+    request: 未标注
+    settings: 未标注
+返回：未标注。"""
             return AgentOutput(
                 agent_id=agent_id,
                 agent_name=agent_id,
@@ -54,8 +65,9 @@ class ApiSmokeTests(unittest.IsolatedAsyncioTestCase):
         finally:
             main.run_agent = original
 
-    # 异步函数「test_manual_step_resume_and_cancel_contract」负责完成该步骤的输入处理、核心逻辑和结果返回。
     async def test_manual_step_resume_and_cancel_contract(self) -> None:
+        """函数“test_manual_step_resume_and_cancel_contract”，负责test manual step resume and cancel contract。
+返回：None。"""
         seed = TopicSeed(domain="AI", brief="smoke", audience="test", duration_seconds=60)
         created = await self.client.post(
             "/api/workflows/hot-video",
@@ -65,8 +77,12 @@ class ApiSmokeTests(unittest.IsolatedAsyncioTestCase):
         run_id = created.json()["id"]
         original_execute = main._execute_workflow
 
-        # 异步函数「fake_execute」负责完成该步骤的输入处理、核心逻辑和结果返回。
         async def fake_execute(run, *, stop_after_stage=None):
+            """函数“fake_execute”，负责fake execute。
+参数：
+    run: 未标注
+    stop_after_stage: 未标注
+返回：未标注。"""
             await asyncio.sleep(30)
 
         main._execute_workflow = fake_execute
@@ -83,8 +99,9 @@ class ApiSmokeTests(unittest.IsolatedAsyncioTestCase):
             if task and not task.done():
                 task.cancel()
 
-    # 异步函数「test_fixture_source_keeps_two_domain_gate」负责完成该步骤的输入处理、核心逻辑和结果返回。
     async def test_fixture_source_keeps_two_domain_gate(self) -> None:
+        """函数“test_fixture_source_keeps_two_domain_gate”，负责test fixture source keeps two domain gate。
+返回：None。"""
         original_settings = main.get_settings
         original_workflow_settings = workflows.get_settings
         original_gateway = workflows.LlmGateway
@@ -93,13 +110,23 @@ class ApiSmokeTests(unittest.IsolatedAsyncioTestCase):
         workflows.get_settings = lambda: settings
 
         class FixtureGateway:
-            # 函数「__init__」负责完成该步骤的输入处理、核心逻辑和结果返回。
+            """数据模型或服务类“FixtureGateway”，封装相关状态与行为。"""
             def __init__(self, _settings):
+                """内部辅助函数“__init__”，负责init。
+参数：
+    _settings: 未标注
+返回：未标注。"""
                 pass
 
-            # 异步函数「complete」负责完成该步骤的输入处理、核心逻辑和结果返回。
             async def complete(self, system: str, user: str, fallback: str):
+                """函数“complete”，负责complete。
+参数：
+    system: str
+    user: str
+    fallback: str
+返回：未标注。"""
                 class Completion:
+                    """数据模型或服务类“Completion”，封装相关状态与行为。"""
                     content = json.dumps({"topics": []}, ensure_ascii=False)
                 return Completion()
 
