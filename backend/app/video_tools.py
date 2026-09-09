@@ -34,6 +34,7 @@ class MoneyPrinterTurboStatus(BaseModel):
     license: str
     missing_env: list[str]
     default_command: str
+    acceleration_policy: str = "优先独显硬件编码；检测不到独显时回退 CPU"
 
 
 class MoneyPrinterTurboRequest(BaseModel):
@@ -42,6 +43,8 @@ class MoneyPrinterTurboRequest(BaseModel):
     extra_args: list[str] = []
     output_dir: str | None = None
     video_aspect: Literal["9:16", "16:9"] = "9:16"
+    video_script: str | None = None
+    target_duration_seconds: int | None = None
 
 
 class MoneyPrinterTurboRunResult(BaseModel):
@@ -83,6 +86,7 @@ def mpt_status(settings: Settings) -> MoneyPrinterTurboStatus:
         license="MIT",
         missing_env=missing_env,
         default_command='uv run --no-project --python 3.11.15 python mpt_agent.py --subject "<视频主题或脚本>" -- --video-aspect "9:16"',
+        acceleration_policy="优先独显硬件编码；检测不到独显时回退 CPU",
     )
 
 
@@ -156,6 +160,8 @@ async def run_moneyprinterturbo(
         "mpt_agent.py",
         "--subject",
         request.subject,
+        *( ["--video-script", request.video_script] if request.video_script else [] ),
+        *( ["--target-duration", str(request.target_duration_seconds)] if request.target_duration_seconds else [] ),
         *( ["--output-dir", request.output_dir] if request.output_dir else [] ),
         *request.extra_args,
         "--",

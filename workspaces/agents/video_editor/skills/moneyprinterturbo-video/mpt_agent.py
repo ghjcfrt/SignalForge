@@ -22,7 +22,12 @@ from pathlib import Path
 PROJECT_ARCHIVE_URL = (
     "https://github.com/harry0703/MoneyPrinterTurbo/archive/refs/heads/main.zip"
 )
-DEFAULT_ROOT = Path.home() / "MoneyPrinterTurbo"
+# Keep the upstream checkout inside this SignalForge project so all runtime
+# state and generated assets remain self-contained.  The helper lives five
+# levels below the repository root:
+#   SignalForge/workspaces/agents/video_editor/skills/moneyprinterturbo-video/
+PROJECT_ROOT = Path(__file__).resolve().parents[5]
+DEFAULT_ROOT = PROJECT_ROOT / "MoneyPrinterTurbo"
 DEFAULT_VOICE_NAME = "zh-CN-XiaoxiaoNeural-Female"
 NEEDS_INPUT_EXIT_CODE = 10
 SUPPORTED_SOURCES = {"pexels", "pixabay", "coverr", "local"}
@@ -56,6 +61,30 @@ RECOMMENDED_LLM_PROVIDERS = {
 KEYLESS_LLM_PROVIDERS = {"ollama", "litellm"}
 CUSTOM_OPENAI_PROVIDER = "oneapi"
 
+
+def _spoken_script(value: str) -> str:
+    """Extract narration only; never send shot/subtitle directions to TTS."""
+    lines: list[str] = []
+    skip_markers = ("镜头", "画面", "素材", "字幕", "转场", "音效", "配乐", "剪辑", "导出")
+    for raw in (value or "").splitlines():
+        raw = raw.strip()
+        # Markdown headings and bold metadata are layout instructions, not narration.
+        if re.match(r"^#{1,6}\s*", raw) or re.match(r"^\*\*[^*]+\*\*\s*$", raw):
+            continue
+        line = re.sub(r"^\s*[【\[][^】\]]+[】\]]\s*", "", raw).strip()
+        line = re.sub(
+            r"^\s*(?:[-*]\s*)?(?:口播|旁白|配音)(?:\s*[（(][^）)]*[）)])?\s*[:：]\s*",
+            "",
+            line,
+        )
+        if not line or any(marker in line for marker in skip_markers):
+            continue
+        # Metadata lines are not narration even when written as bullets.
+        if re.match(r"^\s*(?:时间|时长|目标时长|画幅|规格|工具)\s*[:：]", line):
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
 # Hidden providers such as Qwen, Azure, and Grok remain usable when already
 # selected, but are not automatic fallback candidates. A fully configured
 # generic OpenAI-compatible endpoint can be reused safely.
@@ -85,6 +114,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=f"MoneyPrinterTurbo installation directory (default: {DEFAULT_ROOT})",
     )
     parser.add_argument("--output-dir", type=Path, default=None, help="copy final videos to this directory")
+    parser.add_argument("--video-script", default="", help="complete script forwarded to MoneyPrinterTurbo")
+    parser.add_argument("--target-duration", type=float, default=None, help="pad/trim final videos to this duration in seconds")
     parser.add_argument(
         "cli_args",
         nargs=argparse.REMAINDER,
@@ -96,6 +127,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--subject cannot be empty")
     if args.cli_args and args.cli_args[0] == "--":
         args.cli_args = args.cli_args[1:]
+    if args.video_script.strip():
+        args.video_script = _spoken_script(args.video_script)
+        args.cli_args = ["--video-script", args.video_script, *args.cli_args]
+        # A complete script must finish speaking before the requested canvas
+        # duration.  The upstream default (1.0) produced a 169s soundtrack for
+        # this 110s script, after which post-processing cut the final sentence.
+        # Estimate the required rate from Chinese/non-whitespace character
+        # count; the final normalizer pads short output and never cuts speech.
+        if args.target_duration and args.target_duration > 0 and not has_cli_option(args.cli_args, "--voice-rate"):
+            spoken_chars = len(re.sub(r"\s+", "", args.video_script))
+            estimated_rate = spoken_chars / (5.0 * args.target_duration)
+            args.cli_args.extend(["--voice-rate", f"{max(1.0, min(2.5, estimated_rate)):.3f}"])
     return args
 
 
@@ -168,6 +211,46 @@ def ensure_project(root: Path) -> None:
     log("project download completed")
 
 
+def ensure_llm_timeout(root: Path) -> None:
+    """Keep upstream OpenAI-compatible requests from using the SDK's short default timeout.
+
+    MoneyPrinterTurbo is downloaded at runtime and is intentionally not vendored
+    into SignalForge.  Apply this small, idempotent runtime patch after both a
+    fresh download and reuse of an existing checkout so long prompts can finish
+    through slower OpenAI-compatible gateways.
+    """
+    llm_file = root / "app" / "services" / "llm.py"
+    if not llm_file.is_file():
+        return
+    text = llm_file.read_text(encoding="utf-8")
+    if "_OPENAI_REQUEST_TIMEOUT_SECONDS" in text:
+        # Already patched.  Returning here is important: a broad constructor
+        # regex can mistake the nested ``base_url=(...)`` close parenthesis for
+        # the end of OpenAI(...), corrupting valid Python on every retry.
+        return
+    if "_OPENAI_REQUEST_TIMEOUT_SECONDS" not in text:
+        marker = "_max_retries = 5"
+        if marker not in text:
+            return
+        text = text.replace(
+            marker,
+            marker
+            + "\n# Allow long prompts to complete through OpenAI-compatible gateways.\n"
+            + "_OPENAI_REQUEST_TIMEOUT_SECONDS = 120.0",
+            1,
+        )
+    # Insert after the first api_key argument.  This avoids matching nested
+    # parentheses in Cloudflare's multiline base_url expression.
+    patched = re.sub(
+        r"(?m)^(\s*client = (?:AzureOpenAI|OpenAI)\(\r?\n\s*api_key=api_key,\r?\n)",
+        r"\1                timeout=_OPENAI_REQUEST_TIMEOUT_SECONDS,\n",
+        text,
+    )
+    if patched != text:
+        llm_file.write_text(patched, encoding="utf-8")
+        log("configured MoneyPrinterTurbo LLM request timeout: 120s")
+
+
 # 函数「ensure_config」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def ensure_config(root: Path) -> Path:
     """Create the initial configuration without overwriting an existing file."""
@@ -176,6 +259,121 @@ def ensure_config(root: Path) -> Path:
         shutil.copy2(root / "config.example.toml", config_path)
         log(f"created configuration file: {config_path}")
     return config_path
+
+
+def _detect_discrete_gpu_codec() -> str | None:
+    """Detect a discrete GPU and map it to the matching FFmpeg encoder."""
+    # Probe NVIDIA directly when the utility is available.  This is the most
+    # reliable Windows signal for a discrete adapter and is bounded so a
+    # broken driver cannot hold an unattended workflow forever.  The legacy
+    # environment switch is still accepted as an explicit opt-out for hosts
+    # where process creation is restricted.
+    probe_disabled = str(
+        os.environ.get("MPT_DISABLE_GPU_DETECTION", "")
+    ).strip().casefold() in {"1", "true", "yes"}
+    nvidia_smi = shutil.which("nvidia-smi") or shutil.which("nvidia-smi.exe")
+    if not probe_disabled and nvidia_smi:
+        try:
+            result = subprocess.run(
+                [nvidia_smi, "--query-gpu=name", "--format=csv,noheader"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return "h264_nvenc"
+        except (OSError, subprocess.TimeoutExpired, KeyboardInterrupt):
+            pass
+    # On Windows, query adapter names so AMD discrete cards and Intel Arc are
+    # also preferred without treating Intel UHD/Iris integrated graphics as a
+    # discrete adapter. The env override is useful for headless/CI hosts.
+    hinted = str(os.environ.get("MPT_DISCRETE_GPU", "")).strip().casefold()
+    if hinted in {"nvidia", "nvenc"}:
+        return "h264_nvenc"
+    if hinted in {"amd", "radeon", "amf"}:
+        return "h264_amf"
+    if hinted in {"intel_arc", "arc", "qsv"}:
+        return "h264_qsv"
+    if hinted in {"1", "true", "yes"}:
+        return "h264_nvenc"
+    # Do not launch a WMI/PowerShell query by default.  On some Windows hosts
+    # (especially when PowerShell is being initialized by policy software),
+    # CreateProcess itself can block and cannot be bounded by subprocess's
+    # timeout.  Opt in explicitly when adapter-name detection is needed.
+    powershell = shutil.which("powershell.exe") or shutil.which("powershell")
+    powershell_enabled = str(
+        os.environ.get("MPT_ENABLE_POWERSHELL_GPU_DETECTION", "")
+    ).strip().casefold() in {"1", "true", "yes"}
+    if powershell and powershell_enabled:
+        try:
+            result = subprocess.run(
+                [powershell, "-NoProfile", "-Command", "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            for name in result.stdout.splitlines():
+                lowered = name.casefold()
+                if any(token in lowered for token in ("geforce", "quadro", "rtx", "nvidia")):
+                    return "h264_nvenc"
+                if any(token in lowered for token in ("radeon", "amd")) and not any(token in lowered for token in ("vega", "graphics")):
+                    return "h264_amf"
+                if "arc" in lowered:
+                    return "h264_qsv"
+        except (OSError, subprocess.TimeoutExpired, KeyboardInterrupt):
+            pass
+    return None
+
+
+def _has_discrete_gpu() -> bool:
+    """Compatibility helper for callers that only need a yes/no result."""
+    return _detect_discrete_gpu_codec() is not None
+
+
+def _configure_hardware_acceleration(root: Path, config_path: Path) -> str:
+    """Prefer NVENC by default and return the selected acceleration mode."""
+    text = config_path.read_text(encoding="utf-8")
+    requested = _plain_config_value(text, "video_codec").strip().strip('"')
+    detected_codec = _detect_discrete_gpu_codec()
+    # A configured hardware encoder is only honored when a discrete GPU is
+    # actually present. This prevents stale NVENC/AMF/QSV settings from
+    # making a CPU-only machine repeatedly fail before falling back.
+    codec = detected_codec or "libx264"
+    if detected_codec and requested and requested not in {"libx264", ""}:
+        codec = requested
+    if re.search(r"(?m)^\s*#?\s*video_codec\s*=", text):
+        text = re.sub(r"(?m)^\s*#?\s*video_codec\s*=.*$", f'video_codec = "{codec}"', text, count=1)
+    else:
+        app_match = re.search(r"(?m)^\[app\]\s*$", text)
+        if app_match:
+            insert_at = app_match.end()
+            text = text[:insert_at] + f'\nvideo_codec = "{codec}"' + text[insert_at:]
+        else:
+            text += f'\nvideo_codec = "{codec}"\n'
+    config_path.write_text(text, encoding="utf-8")
+    # Whisper subtitles should use the same policy when that provider is
+    # selected: CUDA on a detected discrete GPU, CPU only when none exists.
+    whisper_device = "cuda" if codec != "libx264" else "cpu"
+    whisper_compute = "float16" if whisper_device == "cuda" else "int8"
+    text = re.sub(
+        r"(?ms)(^\[whisper\].*?^device\s*=\s*)\"[^\"]*\"",
+        rf'\1"{whisper_device}"',
+        text,
+        count=1,
+    )
+    text = re.sub(
+        r"(?ms)(^\[whisper\].*?^compute_type\s*=\s*)\"[^\"]*\"",
+        rf'\1"{whisper_compute}"',
+        text,
+        count=1,
+    )
+    config_path.write_text(text, encoding="utf-8")
+    log(f"video acceleration: {codec} ({'discrete GPU detected' if codec != 'libx264' else 'no discrete GPU detected, CPU fallback'})")
+    return codec
 
 
 # 函数「_plain_config_value」负责完成该步骤的输入处理、核心逻辑和结果返回。
@@ -522,6 +720,7 @@ def generate_video(
     subject: str,
     cli_args: list[str],
     output_dir: Path | None = None,
+    target_duration: float | None = None,
 ) -> tuple[list[Path], Path, Path, Path]:
     """Run one traceable CLI task and return only its final video files."""
     uv = shutil.which("uv")
@@ -564,11 +763,23 @@ def generate_video(
         # with ``Invalid voice ''``. Supply a stable Chinese voice unless the
         # user has explicitly selected another voice.
         *voice_args,
+        # Always enable subtitle generation for finished videos, regardless of
+        # a stale WebUI setting from a previous task.
+        "--subtitle-enabled",
         # A Skill request must produce a finished video. Force the final stage
         # so forwarded options cannot stop at script, audio, or materials.
         "--stop-at",
         "video",
     ]
+    # A supplied script is the source of truth for both narration and visuals.
+    # Keep material search/concatenation in script order so the final shot is
+    # the script's closing shot rather than an arbitrary earlier result.
+    if (
+        any(item == "--video-script" and index + 1 < len(cli_args) and cli_args[index + 1].strip() for index, item in enumerate(cli_args))
+        and not has_cli_option(cli_args, "--match-materials-to-script")
+        and not has_cli_option(cli_args, "--no-match-materials-to-script")
+    ):
+        command.append("--match-materials-to-script")
     log(f"starting video generation, task ID: {task_id}")
     log(f"full generation log: {log_path}")
     with log_path.open("w", encoding="utf-8") as log_file:
@@ -623,6 +834,8 @@ def generate_video(
             },
         )
         raise SkillError(error)
+    if target_duration and target_duration > 0:
+        videos = [_normalize_duration(video, target_duration, root=root) for video in videos]
     if output_dir:
         destination = output_dir.expanduser().resolve()
         destination.mkdir(parents=True, exist_ok=True)
@@ -646,14 +859,69 @@ def generate_video(
     return videos, task_dir.resolve(), log_path.resolve(), result_path
 
 
+def _normalize_duration(video: Path, target_duration: float, *, root: Path | None = None) -> Path:
+    """Pad short output, but never cut spoken content from a complete script.
+
+    A hard ``-t`` trim can leave the last subtitle/audio sentence half-spoken.
+    The caller is responsible for fitting TTS into the requested duration; this
+    function only adds a tail when the renderer produced a short file.
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return video
+    probe = subprocess.run(
+        [ffmpeg, "-hide_banner", "-i", str(video)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False,
+    )
+    match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", probe.stderr or "")
+    if not match:
+        return video
+    current = int(match.group(1)) * 3600 + int(match.group(2)) * 60 + float(match.group(3))
+    if abs(current - target_duration) < 0.5:
+        return video
+    if current > target_duration:
+        return video
+    fd, temp_name = tempfile.mkstemp(suffix=".mp4", dir=str(video.parent))
+    os.close(fd)
+    temp = Path(temp_name)
+    codec = "libx264"
+    if root is not None:
+        config_path = root / "config.toml"
+        if config_path.is_file():
+            configured = _plain_config_value(config_path.read_text(encoding="utf-8"), "video_codec")
+            if configured in {"h264_nvenc", "h264_amf", "h264_qsv", "h264_mf", "h264_videotoolbox"}:
+                codec = configured
+    command = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", str(video)]
+    if current < target_duration:
+        command += ["-vf", f"tpad=stop_mode=clone:stop_duration={target_duration-current:.3f}", "-af", "apad"]
+    command += ["-t", f"{target_duration:.3f}", "-c:v", codec, "-c:a", "aac", str(temp)]
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+    if result.returncode != 0 and codec != "libx264":
+        # Keep the existing safe fallback for machines whose driver became
+        # unavailable between the main render and duration normalization.
+        temp.unlink(missing_ok=True)
+        fallback = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", str(video)]
+        if current < target_duration:
+            fallback += ["-vf", f"tpad=stop_mode=clone:stop_duration={target_duration-current:.3f}", "-af", "apad"]
+        fallback += ["-t", f"{target_duration:.3f}", "-c:v", "libx264", "-c:a", "aac", str(temp)]
+        result = subprocess.run(fallback, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+    if result.returncode != 0 or not temp.exists() or temp.stat().st_size == 0:
+        temp.unlink(missing_ok=True)
+        return video
+    temp.replace(video)
+    return video
+
+
 # 函数「main」负责完成该步骤的输入处理、核心逻辑和结果返回。
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     root = args.root.expanduser().resolve()
     try:
         ensure_project(root)
+        ensure_llm_timeout(root)
         config_path = ensure_config(root)
         apply_environment_config(config_path)
+        _configure_hardware_acceleration(root, config_path)
         reuse_existing_llm_provider(config_path)
         provider, missing = missing_config(config_path, args.cli_args)
         if missing:
@@ -677,7 +945,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return report_invalid_pexels_config()
         videos, task_dir, log_path, result_path = generate_video(
-            root, args.subject, args.cli_args, args.output_dir
+            root, args.subject, args.cli_args, args.output_dir, args.target_duration
         )
     except (OSError, SkillError, urllib.error.URLError, zipfile.BadZipFile) as exc:
         print(f"MPT_ERROR={exc}", file=sys.stderr)

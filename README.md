@@ -274,6 +274,10 @@ $env:FRONTEND_PORT = "15173"
 | `stock_assistant` | 逗号分隔的 A 股/港股/美股代码或名称；股票分析报告 |
 | `product_manager`、`programmer`、`healer` | 岗位任务描述；独立 Markdown 产物 |
 
+流水线不会只传递标题：爆款分析师接收用户选中热点的完整产物；文案助手接收该选题完整事实与爆款分析施工图；视频剪辑员接收完整脚本；运营大师接收该选题事实、完整脚本和完整剪辑方案。实际输入会持久化在 `WorkflowRun.stage_inputs`（`run-state.json`）中；上游正文为空时会阻止阶段继续执行。
+
+视频剪辑员默认检测独显并优先使用对应硬件编码器（NVIDIA NVENC、AMD AMF 或 Intel Arc QSV）；仅在检测不到独显时使用 CPU 的 `libx264`。硬件编码器运行失败时保留运行时安全回退。Whisper 字幕在独显存在时使用 CUDA，否则使用 CPU。
+
 ## API 参考
 
 完整请求字段和响应模型以 http://127.0.0.1:8017/docs 为准。常用接口如下：
@@ -366,7 +370,7 @@ Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8017/api/workflows/$($run.i
 
 ```text
 workspaces/runs/<run_id>/
-├── run-state.json                 # 完整任务状态和恢复信息
+├── run-state.json                 # 完整任务状态、阶段输入和恢复信息
 ├── run.log                        # JSONL 工作流日志
 ├── hotspot_monitor/hotspot_monitor.md
 ├── viral_analyst/viral_analyst.md

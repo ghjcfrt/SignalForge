@@ -153,6 +153,7 @@ export interface WorkflowRun {
   source_status?: Record<string, string>;
   stage_status?: Record<string, WorkflowStageStatus>;
   logs?: WorkflowLog[];
+  stage_inputs?: Record<string, string>;
   log_file?: string | null;
   viral_analysis?: ViralAnalysisConfig;
   selected_topic_title?: string | null;

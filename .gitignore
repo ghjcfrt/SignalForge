@@ -21,5 +21,8 @@ workspaces/runs/
 workspaces/agent-logs/
 workspaces/runtime-settings.json
 workspaces/*.png
+# MoneyPrinterTurbo is installed locally under the project root at runtime;
+# keep the upstream checkout and generated media out of the SignalForge repo.
+/MoneyPrinterTurbo/
 *.log
 %SystemDrive%/

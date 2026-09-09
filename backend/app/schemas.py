@@ -305,6 +305,7 @@ class WorkflowRun(BaseModel):
 - `source_status`：dict[str, str]
 - `stage_status`：dict[str, WorkflowStageStatus]
 - `logs`：list[WorkflowLog]
+- `stage_inputs`：dict[str, str]
 - `log_file`：str | None
 - `viral_analysis`：ViralAnalysisConfig
 - `selected_topic_title`：str | None"""
@@ -324,6 +325,8 @@ class WorkflowRun(BaseModel):
     source_status: dict[str, str] = Field(default_factory=dict)
     stage_status: dict[str, WorkflowStageStatus] = Field(default_factory=dict)
     logs: list[WorkflowLog] = Field(default_factory=list)
+    # 每个阶段实际消费的上游完整产物正文，便于审计阶段间是否发生了标题化截断。
+    stage_inputs: dict[str, str] = Field(default_factory=dict)
     log_file: str | None = None
     viral_analysis: ViralAnalysisConfig = Field(default_factory=ViralAnalysisConfig)
     selected_topic_title: str | None = None

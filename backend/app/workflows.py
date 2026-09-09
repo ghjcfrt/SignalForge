@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import httpx
 import asyncio
+import html
 import re
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -868,10 +869,19 @@ def _fallback_hotspot_report(
                 f"- 核验状态：{topic.verification_status}（{topic.verification_note}）",
                 f"- 推荐角度：{topic.angle}",
                 f"- 风险提示：{topic.risk}",
+                *[
+                    f"- 来源 {source_index}：{source.name}｜{source.url}｜{source.published_at.isoformat()}｜{source.claim}"
+                    for source_index, source in enumerate(topic.sources, start=1)
+                ],
                 "",
             ]
         )
     return "\n".join(lines)
+
+
+def _selected_hotspot_report(seed: TopicSeed, topic: Topic) -> str:
+    """生成只包含当前选题的热点监控产物，供下游岗位消费。"""
+    return _fallback_hotspot_report(seed, [topic])
 
 
 def _parse_topics(raw: str, seed: TopicSeed) -> list[Topic]:
@@ -1115,22 +1125,87 @@ def _clean_script_output(content: str, duration_seconds: int) -> str:
         text,
         maxsplit=1,
     )[0].rstrip()
-    # 即使模型标题没有写时长，也要保持稳定的时长契约；不改写口播内容，也不凭空补充事实。
-    # 如果模型给出的时间轴终点不同，只缩放 mm:ss 标签，使最后一段落在目标时长。
-    stamps = list(re.finditer(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)", text))
-    if len(stamps) >= 2:
-        last_seconds = int(stamps[-1].group(1)) * 60 + int(stamps[-1].group(2))
-        if last_seconds > 0 and abs(last_seconds - duration_seconds) >= 3:
-            scale = duration_seconds / last_seconds
-            def replace_stamp(match: re.Match[str]) -> str:
-                """函数“replace_stamp”，负责replace stamp。
-参数：
-    match: re.Match[str]
-返回：str。"""
-                current = int(match.group(1)) * 60 + int(match.group(2))
-                adjusted = max(0, round(current * scale))
-                return f"{adjusted // 60}:{adjusted % 60:02d}"
-            text = re.sub(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)", replace_stamp, text)
+    # 模型有时会在末尾追加“本段不实际存在”的说明，或输出倒置的占位时间段。
+    # 这类内容不是脚本，必须在缩放时间轴前移除，否则会把无效段落带到成片。
+    text = "\n".join(
+        line
+        for line in text.splitlines()
+        if not re.search(r"本段不(?:实际)?存在|脚本已在规定时长内结束", line)
+    ).strip()
+
+    # 即使模型标题没有写时长，也要保持稳定的时长契约；时间轴终点不同则整体缩放。
+    # 先处理带括号的时间段（文案常用的“【mm:ss-mm:ss】”），并忽略倒置段，
+    # 防止出现“02:20-01:50”这样的伪时间轴。
+    range_pattern = re.compile(
+        r"(?P<open>[【\[\(])\s*(?P<s_m>\d{1,2}):(?P<s_s>\d{2})\s*[-–—]\s*"
+        r"(?P<e_m>\d{1,2}):(?P<e_s>\d{2})\s*(?P<close>[】\]\)])"
+    )
+    ranges = list(range_pattern.finditer(text))
+    valid_ranges: list[tuple[re.Match[str], int, int]] = []
+    invalid_lines: set[int] = set()
+    lines = text.splitlines()
+    for match in ranges:
+        start = int(match.group("s_m")) * 60 + int(match.group("s_s"))
+        end = int(match.group("e_m")) * 60 + int(match.group("e_s"))
+        if end <= start:
+            # 记录整行，保留不了可靠的时间边界时宁可丢弃该段标记行。
+            invalid_lines.add(text[: match.start()].count("\n"))
+        else:
+            valid_ranges.append((match, start, end))
+    if invalid_lines:
+        # 无效时间段通常后面紧跟该段的镜头/口播行；一起删除，避免留下没有时间边界的孤儿口播。
+        remove_lines = set(invalid_lines)
+        for invalid_index in invalid_lines:
+            next_range = next(
+                (
+                    index
+                    for index in range(invalid_index + 1, len(lines))
+                    if range_pattern.search(lines[index])
+                ),
+                len(lines),
+            )
+            remove_lines.update(range(invalid_index + 1, next_range))
+        lines = [line for index, line in enumerate(lines) if index not in remove_lines]
+        text = "\n".join(lines).strip()
+        ranges = list(range_pattern.finditer(text))
+        valid_ranges = []
+        for match in ranges:
+            start = int(match.group("s_m")) * 60 + int(match.group("s_s"))
+            end = int(match.group("e_m")) * 60 + int(match.group("e_s"))
+            if end > start:
+                valid_ranges.append((match, start, end))
+    if valid_ranges:
+        source_end = max(end for _, _, end in valid_ranges)
+        scale = duration_seconds / source_end if source_end > 0 else 1.0
+
+        def replace_range(match: re.Match[str]) -> str:
+            """将一个有效时间段缩放并限制在目标时长内。"""
+            start = int(match.group("s_m")) * 60 + int(match.group("s_s"))
+            end = int(match.group("e_m")) * 60 + int(match.group("e_s"))
+            adjusted_start = min(duration_seconds, max(0, round(start * scale)))
+            adjusted_end = min(duration_seconds, max(0, round(end * scale)))
+            if adjusted_end <= adjusted_start:
+                adjusted_end = min(duration_seconds, adjusted_start + 1)
+            return (
+                f"{match.group('open')}{adjusted_start // 60}:{adjusted_start % 60:02d}-"
+                f"{adjusted_end // 60}:{adjusted_end % 60:02d}{match.group('close')}"
+            )
+
+        text = range_pattern.sub(replace_range, text)
+    else:
+        # 兼容不带括号、仅有 mm:ss 标签的旧格式。
+        stamps = list(re.finditer(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)", text))
+        if len(stamps) >= 2:
+            last_seconds = int(stamps[-1].group(1)) * 60 + int(stamps[-1].group(2))
+            if last_seconds > 0 and abs(last_seconds - duration_seconds) >= 3:
+                scale = duration_seconds / last_seconds
+
+                def replace_stamp(match: re.Match[str]) -> str:
+                    current = int(match.group(1)) * 60 + int(match.group(2))
+                    adjusted = min(duration_seconds, max(0, round(current * scale)))
+                    return f"{adjusted // 60}:{adjusted % 60:02d}"
+
+                text = re.sub(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)", replace_stamp, text)
     if text and not re.search(rf"(?m){duration_seconds}\s*秒", text):
         text = f"**目标时长：{duration_seconds} 秒**\n\n" + text
     return text
@@ -1218,6 +1293,9 @@ async def _append_video_generation(
     timeout_seconds: int | None = 0,
     output_dir: str | None = None,
     video_aspect: str = "vertical",
+    video_script: str | None = None,
+    target_duration_seconds: int | None = None,
+    artifact_dir: Path | None = None,
 ) -> str:
     """运行已安装的 MoneyPrinterTurbo 辅助程序并记录结果。
 
@@ -1228,12 +1306,18 @@ async def _append_video_generation(
     """
     try:
         if output_dir is None:
-            output_dir = get_output_directory_settings().video_output_dir.strip() or None
+            configured_dir = get_output_directory_settings().video_output_dir.strip() or None
+            output_dir = str(Path(configured_dir).expanduser().resolve() / "video_editor") if configured_dir else None
+        if output_dir is None and artifact_dir is not None:
+            # 未配置全局目录时，成片与视频剪辑员 Markdown 产物放在同一目录。
+            output_dir = str(artifact_dir / "video_editor")
         result = await run_moneyprinterturbo(
             MoneyPrinterTurboRequest(
                 subject=subject,
                 output_dir=output_dir,
                 video_aspect="16:9" if video_aspect == "horizontal" else "9:16",
+                video_script=video_script,
+                target_duration_seconds=target_duration_seconds,
             ),
             get_settings(),
             timeout_seconds=timeout_seconds,
@@ -1285,6 +1369,7 @@ def _viral_analysis_fallback(topic: Topic, seed: TopicSeed, *, manual_content: s
     manual_content: str
 返回：str。"""
     facts = "\n".join(f"- {source.name}：{source.claim}" for source in _relevant_topic_sources(topic)) or "- 仅使用已核验选题中的事实，不补充来源之外的内容。"
+    topic_short = topic.title.strip()[:36]
     if _looks_like_analysis_prompt(manual_content):
         manual_content = "未提供具体爆款样本或分析结论；以下仅依据已核验选题生成施工图，不能宣称为数据驱动规律。"
     if manual_content.strip():
@@ -1300,12 +1385,12 @@ def _viral_analysis_fallback(topic: Topic, seed: TopicSeed, *, manual_content: s
 已核验报道支持“{topic.title}”这一事实；它提示基础设施需求可能增强，但不能直接推出某个细分赛道必然获利。
 
 ## 标题结构
-1. 事实变化 + 受众疑问：戴尔上调全年指引，AI 创业者该关注哪一环？
-2. 反常现象 + 核心疑问：AI 服务器需求变强，机会真的只在卖模型吗？
-3. 热点事件 + 实际影响：从戴尔预期上调，看 AI 工具团队的成本变化。
+1. 事实变化 + 受众疑问：{topic_short}，AI 创业者该关注哪一环？
+2. 反常现象 + 核心疑问：{topic_short}，机会真的只在卖模型吗？
+3. 热点事件 + 实际影响：从{topic_short}，看 AI 工具团队的成本变化。
 
 ## 开头策略
-“戴尔上调全年预期，报道指向 AI 服务器需求；这对做 AI 工具的人意味着什么？”随后立即交代来源，并标明机会判断待验证。
+“{topic_short}；这对做 AI 工具的人意味着什么？”随后立即交代来源，并标明机会判断待验证。
 
 ## 内容顺序
 1. 先抛出算力、交付和成本影响\n2. 交代已确认事实\n3. 区分事实与推测，列出等待验证的机会方向\n4. 给出查订单、交付周期和毛利的验证动作
@@ -1331,12 +1416,12 @@ def _viral_analysis_fallback(topic: Topic, seed: TopicSeed, *, manual_content: s
 已核验报道支持“{topic.title}”这一事实；它提示基础设施需求可能增强，但不能直接推出某个细分赛道必然获利。
 
 ## 标题结构
-1. 事实变化 + 受众疑问：戴尔上调全年指引，AI 创业者该关注哪一环？
-2. 反常现象 + 核心疑问：AI 服务器需求变强，机会真的只在卖模型吗？
-3. 热点事件 + 实际影响：从戴尔预期上调，看 AI 工具团队的成本变化。
+1. 事实变化 + 受众疑问：{topic_short}，AI 创业者该关注哪一环？
+2. 反常现象 + 核心疑问：{topic_short}，机会真的只在卖模型吗？
+3. 热点事件 + 实际影响：从{topic_short}，看 AI 工具团队的成本变化。
 
 ## 开头策略
-“戴尔上调全年预期，报道指向 AI 服务器需求；这对做 AI 工具的人意味着什么？”随后立即交代来源，并标明机会判断待验证。
+“{topic_short}；这对做 AI 工具的人意味着什么？”随后立即交代来源，并标明机会判断待验证。
 
 ## 内容顺序
 1. 先抛出算力、交付和成本影响\n2. 交代已确认事实\n3. 区分事实与推测，列出等待验证的机会方向\n4. 给出查订单、交付周期和毛利的验证动作
@@ -1429,6 +1514,9 @@ async def run_agent(agent_id: str, request: RunAgentRequest, settings: Settings)
             subject,
             output_dir=str(edit_settings.get("output_dir") or "") or None,
             video_aspect=str(edit_settings.get("format") or "vertical"),
+            video_script=script or None,
+            target_duration_seconds=duration,
+            artifact_dir=run_dir,
         )
         return _output(run_dir, agent_id, "视频成片", edit_content, str(edit_settings.get("artifact_output_dir") or "") or None)
     if agent_id == "stock_assistant":
@@ -1543,37 +1631,76 @@ def _ensure_standalone_viral_sections(content: str, fallback: str) -> str:
     return content.rstrip() + "\n\n---\n\n" + fallback
 
 
-def _write_operator_cover(topic: Topic, run_dir: Path) -> str:
-    """为运营产物生成确定性的 9:16 封面素材。"""
+def _cover_title_from_operator(content: str, topic: Topic) -> str:
+    """从运营大师方案提取封面短标题，过长时做语义保守压缩。"""
+    candidates = re.findall(r"(?:主文案|封面文案|封面标题)\s*[:：]\s*([^\n|]+)", content or "")
+    if not candidates:
+        # 平台适配表中的第一条平台标题也属于运营大师的授权建议。
+        candidates = re.findall(r"\|\s*(?:抖音|视频号|小红书)\s*\|\s*([^|\n]+)", content or "")
+    title = next((re.sub(r"[*`#]", "", value).strip(" ：:。" ) for value in candidates if value.strip()), "")
+    if not title:
+        title = topic.title.strip() or "热点新闻速览"
+    # 去除运营方案可能附加的“3 个关键影响”等排版尾巴，再限制封面长度。
+    title = re.sub(r"\s*[：:，,；;|].*$", "", title).strip()
+    title = re.sub(r"\s*\d+\s*(?:个|项|条)?(?:关键影响|要点|动作).*$", "", title).strip()
+    return title[:28] or (topic.title.strip()[:28] or "热点新闻速览")
+
+
+def _write_operator_cover(
+    topic: Topic,
+    run_dir: Path,
+    video_aspect: str = "vertical",
+    title_override: str | None = None,
+) -> str:
+    """按成片画幅生成可换行的运营封面素材。"""
     cover_dir = run_dir / "operator"
     cover_dir.mkdir(parents=True, exist_ok=True)
     path = cover_dir / "cover.svg"
-    title = "AI服务器需求变强"
-    subtitle = "成本会怎么变？"
-    detail = "查订单  ·  看交付  ·  算毛利"
-    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+    raw_title = (title_override or topic.title).strip() or "热点新闻速览"
+    horizontal = video_aspect == "horizontal"
+    width, height = (1920, 1080) if horizontal else (1080, 1920)
+    # Keep enough horizontal margin for CJK glyphs and mixed Latin text.
+    max_chars = 14 if horizontal else 8
+    title_lines = [raw_title[index:index + max_chars] for index in range(0, len(raw_title), max_chars)] or ["热点新闻速览"]
+    title_lines = title_lines[:3]
+    title_size = 60 if horizontal else 68
+    title_y = 300 if horizontal else 500
+    title_line_gap = 74 if horizontal else 84
+    title_svg = "".join(
+        f'<tspan x="{width // 2}" dy="{0 if index == 0 else title_line_gap}">{html.escape(line)}</tspan>'
+        for index, line in enumerate(title_lines)
+    )
+    subtitle_y = title_y + title_line_gap * len(title_lines) + (46 if horizontal else 64)
+    tagline_y = subtitle_y + (72 if horizontal else 100)
+    wave_y = 820 if horizontal else 1420
+    detail_y = 925 if horizontal else 1510
+    footer_y = 1040 if horizontal else 1770
+    footer_subtitle_y = 1070 if horizontal else 1830
+    subtitle = "热点影响与关键数据"
+    detail = "事实信号  ·  影响拆解  ·  验证动作"
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#071426"/><stop offset="1" stop-color="#102d4d"/></linearGradient>
     <linearGradient id="line" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#23d5ab"/><stop offset="1" stop-color="#ffd166"/></linearGradient>
   </defs>
-  <rect width="1080" height="1920" fill="url(#bg)"/>
-  <circle cx="850" cy="280" r="260" fill="#1b4965" opacity=".42"/><circle cx="160" cy="1580" r="360" fill="#123b5d" opacity=".45"/>
-  <path d="M0 1420 C260 1320 360 1510 600 1390 S900 1280 1080 1370" fill="none" stroke="url(#line)" stroke-width="8" opacity=".8"/>
-  <rect x="84" y="110" width="230" height="58" rx="29" fill="#ffd166"/><text x="199" y="150" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="28" font-weight="700" fill="#071426">AI 行业观察</text>
-  <text x="84" y="580" font-family="Microsoft YaHei, sans-serif" font-size="78" font-weight="800" fill="#ffffff">{title}</text>
-  <text x="84" y="700" font-family="Microsoft YaHei, sans-serif" font-size="104" font-weight="900" fill="#ffd166">{subtitle}</text>
-  <text x="84" y="850" font-family="Microsoft YaHei, sans-serif" font-size="40" fill="#cfe8ff">别只看股价，先看业务指标</text>
+  <rect width="{width}" height="{height}" fill="url(#bg)"/>
+  <circle cx="{int(width * .80)}" cy="{int(height * .18)}" r="260" fill="#1b4965" opacity=".42"/><circle cx="{int(width * .15)}" cy="{int(height * .82)}" r="360" fill="#123b5d" opacity=".45"/>
+  <path d="M0 {wave_y} C{int(width * .24)} {wave_y - 55} {int(width * .35)} {wave_y + 55} {int(width * .56)} {wave_y - 20} S{int(width * .84)} {wave_y - 70} {width} {wave_y - 10}" fill="none" stroke="url(#line)" stroke-width="8" opacity=".55"/>
+  <rect x="84" y="70" width="230" height="58" rx="29" fill="#ffd166"/><text x="199" y="110" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="28" font-weight="700" fill="#071426">AI 行业观察</text>
+  <text x="{width // 2}" y="{title_y}" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="{title_size}" font-weight="800" fill="#ffffff">{title_svg}</text>
+  <text x="{width // 2}" y="{subtitle_y}" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="{58 if horizontal else 72}" font-weight="900" fill="#ffd166">{subtitle}</text>
+  <text x="{width // 2}" y="{tagline_y}" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="{32 if horizontal else 40}" fill="#cfe8ff">事实信号 · 影响拆解 · 可执行验证</text>
   <g font-family="Microsoft YaHei, sans-serif" font-size="42" font-weight="700" fill="#ffffff">
-    <rect x="84" y="1030" width="912" height="112" rx="20" fill="#0d2238" stroke="#23d5ab" stroke-width="3"/><text x="540" y="1102" text-anchor="middle">{detail}</text>
+    <rect x="{84 if not horizontal else 520}" y="{detail_y}" width="{912 if not horizontal else 880}" height="{90 if horizontal else 112}" rx="20" fill="#0d2238" stroke="#23d5ab" stroke-width="3"/><text x="{width // 2}" y="{detail_y + (58 if horizontal else 72)}" text-anchor="middle" font-size="{34 if horizontal else 42}">{detail}</text>
   </g>
-  <text x="84" y="1770" font-family="Microsoft YaHei, sans-serif" font-size="30" fill="#9fc3df">事实信号 ≠ 行业确定机会</text>
-  <text x="84" y="1830" font-family="Microsoft YaHei, sans-serif" font-size="26" fill="#7195b2">热讯工坊 · 运营发布封面</text>
+  <text x="84" y="{footer_y}" font-family="Microsoft YaHei, sans-serif" font-size="{24 if horizontal else 30}" fill="#9fc3df">事实信号 ≠ 行业确定机会</text>
+  <text x="84" y="{footer_subtitle_y}" font-family="Microsoft YaHei, sans-serif" font-size="{22 if horizontal else 26}" fill="#7195b2">热讯工坊 · 运营发布封面</text>
 </svg>'''
     path.write_text(svg, encoding="utf-8")
     return str(path.resolve())
 
 
-def _operator_fallback(topic: Topic, cover_path: str | None = None) -> str:
+def _operator_fallback(topic: Topic, cover_path: str | None = None, script: str = "") -> str:
     """生成包含平台适配和证据边界的完整运营方案。"""
     topic_terms = {token.casefold() for token in re.findall(r"[\u4e00-\u9fffA-Za-z0-9]{2,}", topic.title)}
     sources = [
@@ -1585,21 +1712,23 @@ def _operator_fallback(topic: Topic, cover_path: str | None = None) -> str:
     source_lines = "\n".join(
         f"- {source.name}：{source.url}（{source.claim}）" for source in sources[:5]
     ) or f"- {topic.source_hint or '公开来源'}：{topic.source_url}（{topic.title}）"
+    topic_short = topic.title.strip()[:36]
+    script_hint = re.sub(r"[#*`>|]", "", script).strip().replace("\n", " ")[:80] or topic_short
     return f"""# 运营发布方案：{topic.title}
 
 ## 1. 发布定位
 - 目标受众：关注 AI 工具的一线创作者、产品/运营和创业者。
-- 核心承诺：把新闻信号落到成本、交付和机会三个可核验动作。
+- 核心承诺：围绕“{topic_short}”和脚本主线“{script_hint}”提炼可核验动作。
 - 承接规则：只推广文案脚本已有观点，不新增事实，不把股价表现扩大为行业结论。
 
 ## 1.1 行业分析
-- 内容赛道：AI 基础设施、算力成本与 AI 工具团队经营决策。
-- 用户需求：理解新闻如何影响成本、交付和毛利，并获得可执行的验证步骤。
+- 内容赛道：{topic_short}相关的新闻解读与行动建议。
+- 用户需求：理解这条新闻对受众的具体影响，并获得可执行的验证步骤。
 - 内容边界：本报告只基于本次已核验选题，不推断行业整体趋势。
 
 ## 1.2 竞品分析
 - 对标内容类型：财经快讯、算力行业解读、AI 创业实操分享。
-- 差异化切口：把“戴尔预期上调”转译为查订单、看交付、算毛利的行动清单。
+- 差异化切口：围绕“{topic_short}”提炼事实、影响和可执行验证动作。
 - 发布前动作：人工抽查同题材近 7 天标题和封面，避免重复表述；未抓取到竞品数据时标记为待补。
 
 ## 1.3 账号设置建议
@@ -1610,16 +1739,16 @@ def _operator_fallback(topic: Topic, cover_path: str | None = None) -> str:
 ## 2. 平台适配
 | 平台 | 标题 | 封面/首屏 | 发布时间 | 话题 |
 |---|---|---|---|---|
-| 抖音 | 别只看戴尔股价：AI工具团队先查这3项 | 成本｜交付｜机会 | 工作日 19:30-21:30 | #AI服务器 #AI工具 #算力成本 |
-| 视频号 | 戴尔上调预期，AI工具团队该怎么验证影响？ | 事实信号 vs 待验证 | 工作日 12:00-13:30 或 20:00-21:30 | #AI创业 #行业观察 #商业分析 |
-| 小红书 | 从戴尔预期上调，看 AI 工具团队的成本与交付 | 三个验证动作 | 工作日 12:00-14:00 | #AI服务器 #供应链 #ToB运营 |
+| 抖音 | {topic_short}：3 个关键影响 | 事实｜影响｜验证 | 工作日 19:30-21:30 | #AI基建 #行业观察 #热点解读 |
+| 视频号 | {topic_short}，普通人该关注什么？ | 事实信号 vs 待验证 | 工作日 12:00-13:30 或 20:00-21:30 | #AI创业 #行业观察 #商业分析 |
+| 小红书 | {topic_short}：从新闻到行动清单 | 三个验证动作 | 工作日 12:00-14:00 | #AI基建 #供应链 #科技趋势 |
 
 ## 3. 封面与发布文案
-- 主文案：AI服务器需求变强，成本会怎么变？
+- 主文案：{topic_short}
 - 副文案：查订单｜看交付｜算毛利
-- 发布简介：戴尔预期上调是基础设施需求信号；本文只提供验证路径，不将单一公司表现等同于行业趋势。
+- 发布简介：围绕“{topic_short}”拆解已核验事实与待验证影响；本文只提供验证路径，不夸大单一事件。
 - 封面文件：{cover_path or '待生成'}
-- 封面规格：1080×1920（9:16），深蓝科技风；可直接上传或转 PNG 使用。
+- 封面规格：按成片画幅适配（横版 1920×1080 或竖版 1080×1920），深蓝科技风；可直接上传或转 PNG 使用。
 
 ## 4. 评论与回复流程
 - 置顶问题：评论区报三个数：交付周期、单请求成本、订单兑现率。
@@ -1658,7 +1787,7 @@ def _operator_fallback(topic: Topic, cover_path: str | None = None) -> str:
 """
 
 
-def _ensure_operator_sections(content: str, fallback: str, topic: Topic) -> str:
+def _ensure_operator_sections(content: str, fallback: str, topic: Topic, script: str = "") -> str:
     """内部辅助函数“_ensure_operator_sections”，负责ensure operator sections。
 参数：
     content: str
@@ -1670,6 +1799,17 @@ def _ensure_operator_sections(content: str, fallback: str, topic: Topic) -> str:
     # 运营产物会被用户直接执行；若模型遗漏必需章节，使用带证据链的确定性方案。
     if not text or sum(marker in text for marker in required) < len(required):
         return fallback
+    # 运营文案必须与当前新闻或口播有实质词汇交集，避免模型返回另一条新闻的模板。
+    anchors = {
+        token.casefold()
+        for token in re.findall(r"[\u4e00-\u9fffA-Za-z0-9]{2,}", f"{topic.title} {script}")
+    }
+    produced = {
+        token.casefold()
+        for token in re.findall(r"[\u4e00-\u9fffA-Za-z0-9]{2,}", text)
+    }
+    if anchors and len(anchors & produced) < 2:
+        return fallback
     # 当前没有真实分发数据，因此删除暗示已取得效果的表述。
     if re.search(r"完播率|互动率|转化率|CTR|ROI|播放完成率|3秒留存|平均观看时长|点赞率|收藏率|转发率", text):
         return fallback
@@ -1677,7 +1817,7 @@ def _ensure_operator_sections(content: str, fallback: str, topic: Topic) -> str:
         text += f"\n\n## 来源与发布前核验\n- {topic.source_hint or '公开来源'}：{topic.source_url}\n- 核验状态：{topic.verification_status}；发布前仍需人工复核原文。\n"
     cover_match = re.search(r"封面文件：([^\n]+)", fallback)
     if cover_match and "封面文件：" not in text:
-        text += f"\n\n## 封面资产\n- 封面文件：{cover_match.group(1).strip()}\n- 规格：1080×1920（9:16），可直接预览或转 PNG 上传。\n"
+        text += f"\n\n## 封面资产\n- 封面文件：{cover_match.group(1).strip()}\n- 规格：按本次视频画幅生成（横版 1920×1080 或竖版 1080×1920），可直接预览或转 PNG 上传。\n"
     return text.strip()
 
 
@@ -1748,6 +1888,20 @@ async def run_hot_video_workflow(
         _checkpoint(workflow)
         return output
 
+    def record_stage_input(stage: str, *upstream: AgentOutput | str | None) -> str:
+        """记录阶段实际收到的上游完整正文，防止只传递标题或摘要。"""
+        parts = [
+            item.content if isinstance(item, AgentOutput) else item
+            for item in upstream
+            if item is not None and (item.content if isinstance(item, AgentOutput) else item).strip()
+        ]
+        content = "\n\n".join(parts)
+        if not content.strip():
+            raise RuntimeError(f"{stage}: 上游产物正文为空，已阻止仅凭标题继续执行")
+        workflow.stage_inputs[stage] = content
+        _checkpoint(workflow)
+        return content
+
     try:
         start_index = 0
         if workflow.current_stage in WORKFLOW_STAGES:
@@ -1798,6 +1952,11 @@ async def run_hot_video_workflow(
                     (topic for topic in verified_topics if topic.title == workflow.selected_topic_title),
                     verified_topics[0],
                 )
+                # 下游只接收用户选择的单个选题，不把热点监控的其它候选混入输入。
+                workflow.selected_topic_title = selected.title
+                hotspot_content = _selected_hotspot_report(seed, selected)
+                workflow.stage_inputs[stage] = hotspot_content
+                _checkpoint(workflow)
                 analyst_output = output_for("viral_analyst")
                 if analyst_output:
                     analyst_content = analyst_output.content
@@ -1864,6 +2023,8 @@ async def run_hot_video_workflow(
                                 "必须从全部输入样本中提取可复用的表达结构，并标明它们是样本观察而非事实。"
                             ),
                             user=(
+                                "以下是上一步热点监控员的完整产物，必须完整阅读后再分析，不得只依据标题：\n"
+                                f"{hotspot_content}\n\n"
                                 f"请分析这个已核验选题：{selected.model_dump_json()}\n"
                                 "先检查热点排行，再检查该选题的爆款样本；输出一份可直接交给文案助手的分析规范。\n"
                                 + ranking_context
@@ -1881,7 +2042,14 @@ async def run_hot_video_workflow(
                 )
                 if selected is None:
                     raise RuntimeError("找不到已核验选题，无法生成脚本")
-                analyst_content = output_for("viral_analyst").content if output_for("viral_analyst") else analyst_content
+                analyst_output = output_for("viral_analyst")
+                selected_report = _selected_hotspot_report(seed, selected)
+                if analyst_output:
+                    # 文案助手同时获得选中热点的完整事实和爆款分析施工图。
+                    analyst_content = record_stage_input(stage, selected_report, analyst_output)
+                else:
+                    # 爆款分析关闭时，也只把当前选中的单个选题传给文案助手。
+                    analyst_content = record_stage_input(stage, selected_report)
                 script_output = output_for("copywriter")
                 script_fallback = f"""# 口播脚本：{selected.title}
 
@@ -1900,7 +2068,13 @@ async def run_hot_video_workflow(
 一人公司不是让 AI 替你思考，而是让你的判断力有一条生产线。
 """
                 if script_output:
-                    script_content = script_output.content
+                    # 检查点可能来自旧版本或模型原样输出；恢复任务时也必须重新执行
+                    # 时长清洗，并回写磁盘，避免下游继续消费超时/倒置时间轴。
+                    script_content = _clean_script_output(script_output.content, seed.duration_seconds)
+                    if script_content != script_output.content:
+                        script_output.content = script_content
+                        Path(script_output.artifact_path).write_text(script_content, encoding="utf-8")
+                        _checkpoint(workflow)
                 else:
                     result = await gateway.complete(
                         system=(
@@ -1908,7 +2082,11 @@ async def run_hot_video_workflow(
                             f"严格控制为约 {seed.duration_seconds} 秒，时间轴最后一段必须结束在 {seed.duration_seconds} 秒。"
                             "必须区分已确认事实与推测/待验证判断；只输出成稿，不要输出助手元话术。"
                         ),
-                        user=f"请基于爆款分析写 {seed.duration_seconds} 秒脚本：\n{analyst_content}",
+                        user=(
+                            "请基于上一步岗位的完整产物写脚本；不得只根据标题猜测：\n"
+                            f"{analyst_content}\n\n"
+                            f"目标时长：{seed.duration_seconds} 秒"
+                        ),
                         fallback=script_fallback,
                     )
                     script_content = _clean_script_output(result.content, seed.duration_seconds)
@@ -1920,7 +2098,8 @@ async def run_hot_video_workflow(
                 )
                 if selected is None:
                     raise RuntimeError("找不到已核验选题，无法生成剪辑方案")
-                script_content = output_for("copywriter").content if output_for("copywriter") else script_content
+                script_output = output_for("copywriter")
+                script_content = record_stage_input(stage, script_output)
                 if not output_for("video_editor"):
                     canvas = "横版 1920x1080（16:9）" if seed.video_aspect == "horizontal" else "竖版 1080x1920（9:16）"
                     mpt_aspect = "16:9" if seed.video_aspect == "horizontal" else "9:16"
@@ -1940,7 +2119,10 @@ async def run_hot_video_workflow(
 """
                     result = await gateway.complete(
                         system="你是视频剪辑员。输出可执行剪辑方案，包含工具出处、画幅、素材、字幕、配音和导出命令。",
-                        user=f"请根据脚本生成剪辑计划。成片画幅必须为 {canvas}：\n{script_content}",
+                        user=(
+                            "请根据上一步文案助手的完整脚本生成剪辑计划；不得只依据标题：\n"
+                            f"{script_content}\n\n成片画幅必须为 {canvas}"
+                        ),
                         fallback=edit_fallback,
                     )
                     # 模型偶尔只返回泛化的补充信息请求；持久化前强制套用可执行的剪辑执行单结构。
@@ -1956,6 +2138,9 @@ async def run_hot_video_workflow(
                         edit_content,
                         selected.title,
                         video_aspect=seed.video_aspect,
+                        video_script=script_content or None,
+                        target_duration_seconds=seed.duration_seconds,
+                        artifact_dir=run_dir,
                     )
                     save_output(
                         "video_editor",
@@ -1969,10 +2154,15 @@ async def run_hot_video_workflow(
                 )
                 if selected is None:
                     raise RuntimeError("找不到已核验选题，无法生成运营方案")
-                script_content = output_for("copywriter").content if output_for("copywriter") else script_content
+                script_output = output_for("copywriter")
+                script_content = script_output.content if script_output else script_content
+                video_output = output_for("video_editor")
+                selected_report = _selected_hotspot_report(seed, selected)
+                # 运营大师需要事实、成稿和剪辑执行单三者，避免发布文案脱离原始证据。
+                video_content = record_stage_input(stage, selected_report, script_output, video_output)
                 if not output_for("operator"):
-                    cover_path = _write_operator_cover(selected, run_dir)
-                    op_fallback = _operator_fallback(selected, cover_path)
+                    # 先让运营大师决定可发布的短标题，再生成封面；封面生成器不擅自改写语义。
+                    provisional_fallback = _operator_fallback(selected, None, script_content)
                     result = await gateway.complete(
                         system=(
                             "你是运营大师。输出完整的中文 Markdown 运营方案，必须包含：发布定位、"
@@ -1981,13 +2171,21 @@ async def run_hot_video_workflow(
                             "不要声称已经验证完播率、互动率、转化率、CTR、ROI 等效果。"
                         ),
                         user=(
-                            f"请为这个脚本生成运营方案，并严格按已核验选题约束：\n{script_content}\n\n"
+                            "请基于上一步视频剪辑员的完整产物生成运营方案；同时核对完整脚本，不得只依据标题：\n"
+                            f"{video_content}\n\n"
                             f"选题证据：{selected.model_dump_json()}\n"
-                            f"如无法满足完整结构，直接使用以下基准方案：\n{op_fallback}"
+                            f"如无法满足完整结构，直接使用以下基准方案：\n{provisional_fallback}"
                         ),
-                        fallback=op_fallback,
+                        fallback=provisional_fallback,
                     )
-                    operator_content = _ensure_operator_sections(result.content, op_fallback, selected)
+                    operator_draft = _ensure_operator_sections(result.content, provisional_fallback, selected, script_content)
+                    cover_title = _cover_title_from_operator(operator_draft, selected)
+                    cover_path = _write_operator_cover(selected, run_dir, seed.video_aspect, cover_title)
+                    op_fallback = _operator_fallback(selected, cover_path, script_content)
+                    operator_content = operator_draft
+                    if "封面文件：" not in operator_content:
+                        operator_content += f"\n\n## 封面资产\n- 封面文件：{cover_path}\n"
+                    operator_content = operator_content.replace("封面文件：待生成", f"封面文件：{cover_path}")
                     save_output("operator", "运营发布方案", operator_content)
 
             workflow.stage_status[stage] = "completed"

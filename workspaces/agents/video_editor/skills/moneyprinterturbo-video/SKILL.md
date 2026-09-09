@@ -24,7 +24,7 @@ The user only needs to provide a video topic or script. Complete installation, c
 
 ## Defaults
 
-Unless the user requests otherwise, generate one Chinese `9:16` portrait video with Pexels footage, the default Chinese Edge TTS voice, subtitles, and background music. Install MoneyPrinterTurbo under the user's home directory.
+Unless the user requests otherwise, generate one Chinese `9:16` portrait video with Pexels footage, the default Chinese Edge TTS voice, subtitles, and background music. Install MoneyPrinterTurbo in the `MoneyPrinterTurbo/` directory at the SignalForge project root (alongside `backend/` and `workspaces/`), not in the user's home directory.
 
 ## Execution
 
@@ -85,7 +85,7 @@ RESULT_FILE=<absolute path>/latest-result.json
 If the terminal reports `exitCode=0` but truncates the output or returns a history-file reference without `MPT_RESULT`, do not infer failure and do not inspect old logs. Read this file once:
 
 ```text
-~/MoneyPrinterTurbo/.agent-logs/moneyprinterturbo-video/latest-result.json
+<SignalForge project root>/MoneyPrinterTurbo/.agent-logs/moneyprinterturbo-video/latest-result.json
 ```
 
 Treat `status=completed` as success. Return only the absolute video path and a concise description, for example:

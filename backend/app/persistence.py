@@ -40,7 +40,9 @@ def output(run_dir: Path, agent_id: str, title: str, content: str, output_dir: s
     if output_dir is None:
         configured = get_output_directory_settings()
         if agent_id == "operator": output_dir = configured.operator_output_dir.strip() or None
-        elif agent_id == "video_editor": output_dir = configured.video_output_dir.strip() or None
+        elif agent_id == "video_editor":
+            configured_video_dir = configured.video_output_dir.strip() or None
+            output_dir = str(Path(configured_video_dir).expanduser().resolve() / "video_editor") if configured_video_dir else None
     path = write_artifact(Path(output_dir).expanduser().resolve(), agent_id, f"{agent_id}.md", content) if output_dir else write_artifact(run_dir, agent_id, f"{agent_id}.md", content)
     return AgentOutput(agent_id=agent_id, agent_name=agent.name, title=title, content=content, artifact_path=path, created_at=now() if now else __import__("datetime").datetime.now().astimezone())
 
