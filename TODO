@@ -2,7 +2,7 @@
  * @Author: ghjcfrt 73391769+ghjcfrt@users.noreply.github.com
  * @Date: 2026-08-23 03:00:36
  * @LastEditors: ghjcfrt 73391769+ghjcfrt@users.noreply.github.com
- * @LastEditTime: 2026-09-08 04:18:00
+ * @LastEditTime: 2026-09-09 17:56:23
  * @FilePath: \SignalForge\TODO
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 -->
@@ -70,4 +70,5 @@
 
 待增加
 
-暂无。
+完整桌面应用前端嵌入
+WebView，后端由应用管理高
