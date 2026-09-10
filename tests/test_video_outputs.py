@@ -1,6 +1,7 @@
 """视频配音输入与运营封面输出测试。"""
 
 from pathlib import Path
+import re
 from tempfile import TemporaryDirectory
 
 from backend.app.schemas import Topic
@@ -34,6 +35,11 @@ def test_spoken_script_removes_parenthesized_voice_metadata() -> None:
     assert spoken == "这意味着成本可能波动。\n请进一步核对。"
 
 
+def test_spoken_script_removes_markdown_bold_markers() -> None:
+    spoken = _spoken_script("口播：**关键数据**已经确认，**请关注后续进展。")
+    assert spoken == "关键数据已经确认，请关注后续进展。"
+
+
 def test_script_duration_normalizer_never_trims_spoken_content(monkeypatch) -> None:
     class Probe:
         stderr = "Duration: 00:02:48.800, start: 0.000000, bitrate: 1 kb/s"
@@ -54,7 +60,21 @@ def test_horizontal_cover_wraps_long_title() -> None:
 
 def test_operator_can_choose_short_cover_title() -> None:
     topic = Topic.model_construct(title="一条很长的原始热点标题", sources=[])
-    assert _cover_title_from_operator("- 主文案：AI服务器需求，先看交付", topic) == "AI服务器需求"
+    assert _cover_title_from_operator("- 封面主文案：AI服务器需求，先看交付", topic) == "AI服务器需求，先看交付"
+
+
+def test_operator_cover_title_preserves_model_selected_copy() -> None:
+    topic = Topic.model_construct(title="原始热点标题", sources=[])
+    result = _cover_title_from_operator("- 封面主文案：AI热潮不只带来机会", topic)
+    assert result == "AI热潮不只带来机会"
+
+
+def test_operator_cover_does_not_truncate_a_long_model_selected_title() -> None:
+    topic = Topic.model_construct(title="原始热点标题", sources=[])
+    title = "AI热潮不只带来机会，成本交付风控都要重算"
+    with TemporaryDirectory() as directory:
+        svg = Path(_write_operator_cover(topic, Path(directory), "horizontal", title)).read_text(encoding="utf-8")
+    assert "".join(re.findall(r"<tspan[^>]*>(.*?)</tspan>", svg)) == title
 
 
 def test_horizontal_cover_keeps_text_above_wave_and_inside_canvas() -> None:

@@ -77,6 +77,9 @@ def _spoken_script(value: str) -> str:
             "",
             line,
         )
+        # The generated script is also the source for TTS and Whisper subtitles.
+        # Markdown bold markers have no spoken or on-screen meaning.
+        line = line.replace("**", "")
         if not line or any(marker in line for marker in skip_markers):
             continue
         # Metadata lines are not narration even when written as bullets.

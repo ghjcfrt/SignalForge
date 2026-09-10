@@ -7,6 +7,8 @@ __pycache__/
 .tmp-skill-check/
 .tmp-*
 .history/
+.ppt-output/
+.ppt-build/
 
 frontend/node_modules/
 frontend/dist/

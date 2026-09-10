@@ -1632,18 +1632,15 @@ def _ensure_standalone_viral_sections(content: str, fallback: str) -> str:
 
 
 def _cover_title_from_operator(content: str, topic: Topic) -> str:
-    """从运营大师方案提取封面短标题，过长时做语义保守压缩。"""
-    candidates = re.findall(r"(?:主文案|封面文案|封面标题)\s*[:：]\s*([^\n|]+)", content or "")
+    """从运营大师方案读取其自主确定的封面主文案，不改写语义。"""
+    candidates = re.findall(r"(?:封面主文案|封面文案|封面标题|主文案)\s*[:：]\s*([^\n|]+)", content or "")
     if not candidates:
         # 平台适配表中的第一条平台标题也属于运营大师的授权建议。
         candidates = re.findall(r"\|\s*(?:抖音|视频号|小红书)\s*\|\s*([^|\n]+)", content or "")
     title = next((re.sub(r"[*`#]", "", value).strip(" ：:。" ) for value in candidates if value.strip()), "")
     if not title:
         title = topic.title.strip() or "热点新闻速览"
-    # 去除运营方案可能附加的“3 个关键影响”等排版尾巴，再限制封面长度。
-    title = re.sub(r"\s*[：:，,；;|].*$", "", title).strip()
-    title = re.sub(r"\s*\d+\s*(?:个|项|条)?(?:关键影响|要点|动作).*$", "", title).strip()
-    return title[:28] or (topic.title.strip()[:28] or "热点新闻速览")
+    return title.strip() or (topic.title.strip() or "热点新闻速览")
 
 
 def _write_operator_cover(
@@ -1659,11 +1656,11 @@ def _write_operator_cover(
     raw_title = (title_override or topic.title).strip() or "热点新闻速览"
     horizontal = video_aspect == "horizontal"
     width, height = (1920, 1080) if horizontal else (1080, 1920)
-    # Keep enough horizontal margin for CJK glyphs and mixed Latin text.
-    max_chars = 14 if horizontal else 8
+    # 模型已决定标题语义；这里仅为版式换行，绝不按字符截断标题。
+    base_chars = 14 if horizontal else 8
+    max_chars = max(base_chars, (len(raw_title) + 2) // 3)
     title_lines = [raw_title[index:index + max_chars] for index in range(0, len(raw_title), max_chars)] or ["热点新闻速览"]
-    title_lines = title_lines[:3]
-    title_size = 60 if horizontal else 68
+    title_size = max(44 if horizontal else 48, int((60 if horizontal else 68) * base_chars / max_chars))
     title_y = 300 if horizontal else 500
     title_line_gap = 74 if horizontal else 84
     title_svg = "".join(
@@ -2169,6 +2166,9 @@ async def run_hot_video_workflow(
                             "抖音/视频号/小红书平台适配、封面与发布文案、评论与回复流程、可执行复盘清单、"
                             "来源与发布前核验、与文案助手的一致性检查。只承接脚本已有事实，不新增事实；"
                             "不要声称已经验证完播率、互动率、转化率、CTR、ROI 等效果。"
+                            "在“封面与发布文案”中必须单列“封面主文案：”。由你根据脚本自行提炼为完整、自然、"
+                            "适合封面的短标题（建议 8–16 个汉字）；不能把机构简称、职务、人名或原题前半截"
+                            "单独当标题，也不要机械截断原题。"
                         ),
                         user=(
                             "请基于上一步视频剪辑员的完整产物生成运营方案；同时核对完整脚本，不得只依据标题：\n"
